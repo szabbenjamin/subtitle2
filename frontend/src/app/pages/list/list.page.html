@@ -1,0 +1,78 @@
+<section class="list-layout">
+  <header class="topbar">
+    <div class="headline">
+      <h1>Saját videóim</h1>
+      <p>A legfrissebb feltöltések legfelül jelennek meg.</p>
+    </div>
+    <div class="upload-box">
+      <input #picker type="file" hidden (change)="onFileSelected($event)" />
+      <button type="button" class="picker-btn" (click)="openPicker()">{{ uploadButtonText() }}</button>
+      @if (selectedFile !== undefined && isUploading === false) {
+        <button
+          type="button"
+          class="accent upload-btn"
+          (click)="startUpload()"
+        >
+          Feltöltés
+        </button>
+      }
+      @if (isUploading === true) {
+        <button type="button" class="cancel-btn" (click)="cancelUpload()">Megszakítás</button>
+      }
+    </div>
+  </header>
+
+  @if (isUploading === true) {
+    <div class="progress">
+      <div class="bar" [style.width.%]="uploadProgress"></div>
+      <span>{{ uploadProgress }}%</span>
+    </div>
+  }
+
+  <section class="panel">
+    <h2>Aktív videók</h2>
+    @if (isLoadingLists === true) {
+      <p class="empty-state">Lista betöltése...</p>
+    }
+    @if (isLoadingLists === false && visibleVideos.length === 0) {
+      <p class="empty-state">Még nincs aktív videód.</p>
+    }
+    @for (video of visibleVideos; track video.id) {
+      <article class="row">
+        <div class="meta">
+          <strong>{{ video.originalFileName }}</strong>
+          <span>Hossz: {{ formatDuration(video.durationSeconds) }}</span>
+          <span>Feltöltve: {{ video.createdAt | date:'yyyy.MM.dd HH:mm' }}</span>
+        </div>
+        <div class="actions">
+          <button type="button" (click)="toggleHidden(video, true)">Elrejtés</button>
+          <button type="button" class="accent" [routerLink]="['/video', video.id]">Megnyitás</button>
+        </div>
+      </article>
+    }
+  </section>
+
+  <section class="panel">
+    <button type="button" class="collapse" (click)="hiddenOpen = !hiddenOpen">
+      Rejtett videók ({{ hiddenVideos.length }})
+    </button>
+    @if (hiddenOpen === true) {
+      @if (hiddenVideos.length === 0) {
+        <p class="empty-state">Nincs rejtett videó.</p>
+      }
+      @for (video of hiddenVideos; track video.id) {
+        <article class="row">
+          <div class="meta">
+            <strong>{{ video.originalFileName }}</strong>
+            <span>Hossz: {{ formatDuration(video.durationSeconds) }}</span>
+            <span>Feltöltve: {{ video.createdAt | date:'yyyy.MM.dd HH:mm' }}</span>
+          </div>
+          <div class="actions">
+            <button type="button" (click)="toggleHidden(video, false)">Visszaállítás</button>
+            <button type="button" class="accent" [routerLink]="['/video', video.id]">Megnyitás</button>
+          </div>
+        </article>
+      }
+    }
+  </section>
+</section>

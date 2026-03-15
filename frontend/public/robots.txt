@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://subtitle2.winben.hu/sitemap.xml

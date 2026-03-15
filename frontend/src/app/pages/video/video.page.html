@@ -1,0 +1,28 @@
+@if (isLoading === true) {
+  <section class="video-state">
+    <p>Videó betöltése...</p>
+  </section>
+} @else if (errorMessage.length > 0) {
+  <section class="video-state error">
+    <p>{{ errorMessage }}</p>
+  </section>
+} @else if (video !== undefined) {
+  <section class="video-layout">
+    <aside class="left">
+      <video [src]="video.mediaUrl" controls preload="metadata"></video>
+      <button type="button" (click)="requestListen()">Lehallgatom</button>
+      <p>Állapot: {{ video.processingStatus }}</p>
+    </aside>
+
+    <main class="center">
+      <h2>{{ video.originalFileName }}</h2>
+      <textarea [(ngModel)]="subtitleText" (ngModelChange)="onSubtitleChange()"></textarea>
+      <p>{{ saveState }}</p>
+    </main>
+
+    <aside class="right">
+      <h3>Szöveg beállítások</h3>
+      <p>Formázási opciók helye (későbbi kör).</p>
+    </aside>
+  </section>
+}

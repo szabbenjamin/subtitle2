@@ -1,0 +1,37 @@
+<div class="app-shell">
+  <header class="main-header">
+    <a routerLink="/lista" class="brand">
+      <span class="brand-dot"></span>
+      subtitle2
+    </a>
+    <nav>
+      @if (isLoggedIn() === true) {
+        <a routerLink="/lista">Lista</a>
+      } @else {
+        <a routerLink="/login">Login</a>
+      }
+      <button type="button" class="icon-btn" (click)="themeService.toggleTheme()" [attr.aria-label]="'Téma váltása: ' + themeService.theme()">
+        @if (themeService.theme() === 'light') {
+          <span class="icon-sun" aria-hidden="true"></span>
+        } @else {
+          <span class="icon-moon" aria-hidden="true"></span>
+        }
+      </button>
+      @if (isLoggedIn() === true) {
+        <button type="button" class="logout-btn" (click)="logout()">Kilépés</button>
+      }
+    </nav>
+  </header>
+
+  <router-outlet></router-outlet>
+
+  @if (showInstallBar === true) {
+    <div class="install-bar">
+      <span>Telepítsd a subtitle2 PWA-t gyors eléréshez.</span>
+      <div>
+        <button type="button" (click)="triggerInstall()">Telepítés</button>
+        <button type="button" (click)="dismissInstallBar()">X</button>
+      </div>
+    </div>
+  }
+</div>

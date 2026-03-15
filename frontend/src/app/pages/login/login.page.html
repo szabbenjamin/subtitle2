@@ -1,0 +1,181 @@
+<section class="login-layout">
+  <div class="hero">
+    <p class="eyebrow">subtitle2 platform</p>
+    <h1>Whisper-alapú feliratozás, professzionális munkafolyamathoz</h1>
+    <p class="lead">
+      Töltsd fel a videóidat, indítsd a háttér-feldolgozást, majd szerkeszd és mentsd a feliratokat egy letisztult,
+      gyors felületen.
+    </p>
+
+    <div class="feature-grid">
+      <article>
+        <h3>Gyors feltöltés</h3>
+        <p>Nagy fájlok kezelése, folyamatos státusz visszajelzéssel.</p>
+      </article>
+      <article>
+        <h3>Whisper pipeline</h3>
+        <p>Lehallgatási jelölés és előkészítés háttérfolyamathoz.</p>
+      </article>
+      <article>
+        <h3>Automatikus mentés</h3>
+        <p>Az SRT szerkesztés módosításai valós időben rögzülnek.</p>
+      </article>
+    </div>
+
+    @if (isResetOnlyRoute === false) {
+      <div class="hero-actions">
+        <button type="button" class="cta" (click)="openModal('login')">Belépés</button>
+        <button type="button" class="ghost" (click)="openModal('register')">Regisztráció</button>
+      </div>
+    }
+  </div>
+
+  @if (message.length > 0 || errorMessage.length > 0 || infoMessage.length > 0) {
+    <div class="alerts">
+      @if (message.length > 0) {
+        <p class="ok">{{ message }}</p>
+      }
+      @if (infoMessage.length > 0) {
+        <p class="info">{{ infoMessage }}</p>
+      }
+      @if (errorMessage.length > 0) {
+        <p class="error">{{ errorMessage }}</p>
+      }
+    </div>
+  }
+
+  <div class="modal-backdrop" [class.open]="activeModal !== 'none'" (click)="onBackdropClick($event)">
+    <div class="modal-card" role="dialog" aria-modal="true">
+      <button type="button" class="close" (click)="closeModal()" aria-label="Bezárás">
+        <span class="close-icon" aria-hidden="true"></span>
+      </button>
+      @if (message.length > 0 || errorMessage.length > 0 || infoMessage.length > 0) {
+        <div class="alerts in-modal">
+          @if (message.length > 0) {
+            <p class="ok">{{ message }}</p>
+          }
+          @if (infoMessage.length > 0) {
+            <p class="info">{{ infoMessage }}</p>
+          }
+          @if (errorMessage.length > 0) {
+            <p class="error">{{ errorMessage }}</p>
+          }
+        </div>
+      }
+
+      <form
+        [formGroup]="loginForm"
+        (ngSubmit)="submitLogin()"
+        class="card"
+        [class.is-active]="activeModal === 'login'"
+        [attr.aria-hidden]="activeModal !== 'login'"
+        autocomplete="on"
+      >
+        <h2>Belépés</h2>
+        <p class="muted">Jelentkezz be az email címeddel és jelszavaddal.</p>
+        <input id="login-email" name="email" type="email" placeholder="Email" formControlName="email" autocomplete="username" />
+        @if (isControlInvalid(loginForm, 'email')) {
+          <p class="field-error">{{ getControlError(loginForm, 'email') }}</p>
+        }
+        <input
+          id="login-password"
+          name="password"
+          type="password"
+          placeholder="Jelszó"
+          formControlName="password"
+          autocomplete="current-password"
+        />
+        @if (isControlInvalid(loginForm, 'password')) {
+          <p class="field-error">{{ getControlError(loginForm, 'password') }}</p>
+        }
+        <button type="submit">Belépés</button>
+        @if (errorMessage.length > 0) {
+          <p class="form-error">{{ errorMessage }}</p>
+        }
+        <p class="inline-links">
+          <a href="#" (click)="$event.preventDefault(); openModal('register')">Nincs még fiókod? Regisztráció</a>
+          <a href="#" (click)="$event.preventDefault(); openModal('forgot')">Elfelejtett jelszó</a>
+        </p>
+      </form>
+
+      <form
+        [formGroup]="registerForm"
+        (ngSubmit)="submitRegister()"
+        class="card"
+        [class.is-active]="activeModal === 'register'"
+        [attr.aria-hidden]="activeModal !== 'register'"
+        autocomplete="on"
+      >
+        <h2>Regisztráció</h2>
+        <p class="muted">Hozz létre fiókot a subtitle2 használatához.</p>
+        <input id="register-email" name="email" type="email" placeholder="Email" formControlName="email" autocomplete="email" />
+        @if (isControlInvalid(registerForm, 'email')) {
+          <p class="field-error">{{ getControlError(registerForm, 'email') }}</p>
+        }
+        <input
+          id="register-password"
+          name="password"
+          type="password"
+          placeholder="Jelszó (min. 8)"
+          formControlName="password"
+          autocomplete="new-password"
+        />
+        @if (isControlInvalid(registerForm, 'password')) {
+          <p class="field-error">{{ getControlError(registerForm, 'password') }}</p>
+        }
+        <button type="submit">Regisztráció</button>
+        @if (errorMessage.length > 0) {
+          <p class="form-error">{{ errorMessage }}</p>
+        }
+      </form>
+
+      <form
+        [formGroup]="forgotForm"
+        (ngSubmit)="submitForgot()"
+        class="card"
+        [class.is-active]="activeModal === 'forgot'"
+        [attr.aria-hidden]="activeModal !== 'forgot'"
+        autocomplete="on"
+      >
+        <h2>Elfelejtett jelszó</h2>
+        <p class="muted">Add meg az email címet, és küldjük a reset linket.</p>
+        <input id="forgot-email" name="email" type="email" placeholder="Email" formControlName="email" autocomplete="email" />
+        @if (isControlInvalid(forgotForm, 'email')) {
+          <p class="field-error">{{ getControlError(forgotForm, 'email') }}</p>
+        }
+        <button type="submit">Reset email küldése</button>
+        @if (errorMessage.length > 0) {
+          <p class="form-error">{{ errorMessage }}</p>
+        }
+      </form>
+
+      <form
+        [formGroup]="resetForm"
+        (ngSubmit)="submitReset()"
+        class="card"
+        [class.is-active]="activeModal === 'reset'"
+        [attr.aria-hidden]="activeModal !== 'reset'"
+        autocomplete="on"
+      >
+        <h2>Új jelszó beállítása</h2>
+        <p class="muted">Ez az oldal csak emailben kapott reset linkről nyitható meg.</p>
+        <input id="reset-token" name="reset-token" type="hidden" formControlName="token" />
+        <input
+          id="reset-password"
+          name="password"
+          type="password"
+          placeholder="Új jelszó"
+          formControlName="newPassword"
+          autocomplete="new-password"
+        />
+        @if (isControlInvalid(resetForm, 'newPassword')) {
+          <p class="field-error">{{ getControlError(resetForm, 'newPassword') }}</p>
+        }
+        <button type="submit">Jelszó mentése</button>
+        @if (errorMessage.length > 0) {
+          <p class="form-error">{{ errorMessage }}</p>
+        }
+      </form>
+    </div>
+  </div>
+</section>

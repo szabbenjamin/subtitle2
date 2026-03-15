@@ -1,0 +1,30 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&family=Fira+Code:wght@400;500&display=swap');
+
+:root {
+  --bg-color: #f4f6f8;
+  --surface-color: #ffffff;
+  --text-color: #12222f;
+  --border-color: #c8d4de;
+  --accent-color: #1166d7;
+}
+
+:root[data-theme='dark'] {
+  --bg-color: #0e151b;
+  --surface-color: #1a2733;
+  --text-color: #edf5fc;
+  --border-color: #2f475d;
+  --accent-color: #43b9ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'IBM Plex Sans', sans-serif;
+  background: var(--bg-color);
+  color: var(--text-color);
+}

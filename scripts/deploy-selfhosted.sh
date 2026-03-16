@@ -42,6 +42,18 @@ run_as_target_user() {
   fi
 }
 
+run_user_shell() {
+  run_as_target_user bash -lc "
+    export HOME='$TARGET_HOME'
+    export NVM_DIR=\"\$HOME/.nvm\"
+    if [[ -s \"\$NVM_DIR/nvm.sh\" ]]; then
+      source \"\$NVM_DIR/nvm.sh\"
+      nvm use 24 >/dev/null 2>&1 || true
+    fi
+    $*
+  "
+}
+
 mkdir -p "$BACKEND_DEPLOY_ROOT" "$BACKEND_DIR" "$BACKEND_DIR/data" "$BACKEND_DIR/uploads" "$FRONTEND_WEB_ROOT" 2>/dev/null || {
   if [[ -n "$SUDO" ]]; then
     $SUDO mkdir -p "$BACKEND_DEPLOY_ROOT" "$BACKEND_DIR" "$BACKEND_DIR/data" "$BACKEND_DIR/uploads" "$FRONTEND_WEB_ROOT"
@@ -52,8 +64,9 @@ mkdir -p "$BACKEND_DEPLOY_ROOT" "$BACKEND_DIR" "$BACKEND_DIR/data" "$BACKEND_DIR
   fi
 }
 
-if ! run_as_target_user bash -lc "command -v pm2 >/dev/null 2>&1"; then
+if ! run_user_shell "command -v pm2 >/dev/null 2>&1"; then
   echo "HIBA: pm2 nincs telepítve vagy nincs PATH-ban."
+  echo "Futtasd egyszer: bash scripts/install-selfhosted.sh"
   exit 1
 fi
 
@@ -122,7 +135,7 @@ if [[ -f "$TMP_DIR/data/subtitle2.sqlite" ]]; then
 fi
 
 cd "$BACKEND_DIR"
-run_as_target_user bash -lc "cd '$BACKEND_DIR' && npm ci --omit=dev"
+run_user_shell "cd '$BACKEND_DIR' && npm ci --omit=dev"
 
 if [[ ! -f "$BACKEND_DIR/dist/main.js" ]]; then
   echo "HIBA: A backend build hiányzik (dist/main.js)."
@@ -130,15 +143,15 @@ if [[ ! -f "$BACKEND_DIR/dist/main.js" ]]; then
   exit 1
 fi
 
-NODE_BIN="$(run_as_target_user bash -lc 'command -v node')"
-if run_as_target_user bash -lc "pm2 describe '$PM2_APP_NAME' >/dev/null 2>&1"; then
-  run_as_target_user bash -lc "pm2 restart '$PM2_APP_NAME' --update-env"
+NODE_BIN="$(run_user_shell 'command -v node')"
+if run_user_shell "pm2 describe '$PM2_APP_NAME' >/dev/null 2>&1"; then
+  run_user_shell "pm2 restart '$PM2_APP_NAME' --update-env"
 else
-  run_as_target_user bash -lc "pm2 start '$BACKEND_DIR/dist/main.js' \
+  run_user_shell "pm2 start '$BACKEND_DIR/dist/main.js' \
     --name "$PM2_APP_NAME" \
     --cwd '$BACKEND_DIR' \
     --interpreter '$NODE_BIN'"
 fi
-run_as_target_user bash -lc "pm2 save"
+run_user_shell "pm2 save"
 
 rm -rf "$TMP_DIR"

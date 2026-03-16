@@ -49,8 +49,17 @@
 
 nav {
   display: flex;
+  width: 100%;
   gap: 0.55rem;
   align-items: center;
+}
+
+.pull-right {
+  margin-left: auto;
+  display: flex;
+  gap: 0.55rem;
+  align-items: center;
+  justify-content: flex-end;
 }
 
 a,

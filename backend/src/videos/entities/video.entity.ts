@@ -57,6 +57,9 @@ export class VideoEntity {
   @Column({ type: 'text', default: 'idle' })
   public processingStatus !: string;
 
+  @Column({ type: 'text', default: '' })
+  public socialTextCombined !: string;
+
   @Column({ type: 'integer', nullable: true })
   public subtitlePresetId ?: number | null;
 

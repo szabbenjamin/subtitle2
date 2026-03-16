@@ -29,11 +29,19 @@ export async function runWhisperWorkerProcess() : Promise<void> {
   const uploadsDir : string = resolveUploadsDir(configService.get<string>('UPLOADS_DIR'));
   const pollMs : number = Number(configService.get<string>('WHISPER_QUEUE_POLL_MS') ?? '2500');
   const whisperCommand : string = await resolveWhisperCommand(configService);
+  let stopRequested : boolean = false;
+  const requestStop = () : void => {
+    stopRequested = true;
+  };
+  process.on('SIGTERM', requestStop);
+  process.on('SIGINT', requestStop);
+  process.on('disconnect', requestStop);
   console.log(`[WhisperWorker] Használt parancs: ${whisperCommand}`);
+  await requeuePendingVideosOnStartup(videosRepository);
 
   // Egyszerre egy feladatot futtatunk, FIFO jelleggel.
   // Több worker process esetén külön lockolás szükséges.
-  for (;;) {
+  while (stopRequested === false) {
     try {
       const queuedVideo : VideoEntity | null = await videosRepository.findOne({
         where: {
@@ -63,7 +71,7 @@ export async function runWhisperWorkerProcess() : Promise<void> {
         wordsPerLine: queuedVideo.wordsPerLine,
       });
 
-      queuedVideo.subtitleText = whisperResult.transcript;
+      queuedVideo.subtitleText = normalizeTranscriptText(whisperResult.transcript);
       queuedVideo.processingStatus = 'idle';
       queuedVideo.listenRequested = false;
       await videosRepository.save(queuedVideo);
@@ -75,6 +83,8 @@ export async function runWhisperWorkerProcess() : Promise<void> {
       await delay(Math.max(1000, pollMs));
     }
   }
+
+  await appContext.close();
 }
 
 /**
@@ -214,10 +224,73 @@ async function recoverStuckPendingVideo(videosRepository : Repository<VideoEntit
   await videosRepository.save(stuck);
 }
 
+/**
+ * Worker induláskor a korábban beragadt `pending` rekordokat visszateszi `queued` állapotba,
+ * hogy backend restart után újra feldolgozásra kerüljenek.
+ */
+async function requeuePendingVideosOnStartup(videosRepository : Repository<VideoEntity>) : Promise<void> {
+  const pendingVideos : VideoEntity[] = await videosRepository.find({
+    where: {
+      processingStatus: 'pending',
+      listenRequested: true,
+    },
+    order: {
+      updatedAt: 'ASC',
+      id: 'ASC',
+    },
+  });
+
+  if (pendingVideos.length === 0) {
+    return;
+  }
+
+  for (const video of pendingVideos) {
+    video.processingStatus = 'queued';
+  }
+  await videosRepository.save(pendingVideos);
+  console.log(`[WhisperWorker] ${pendingVideos.length} db beragadt pending videó visszatéve queued állapotba.`);
+}
+
 function delay(ms : number) : Promise<void> {
   return new Promise<void>((resolve : () => void) => {
     setTimeout(resolve, ms);
   });
+}
+
+/**
+ * Whisper kimenet normalizálása:
+ * - feliratsorok végéről pont eltávolítása
+ * - új sorok kezdőbetűje kisbetűsítve
+ * (időbélyeg és sorszám sorok érintetlenek maradnak)
+ */
+function normalizeTranscriptText(transcript : string) : string {
+  const lines : string[] = transcript.replace(/\r\n/g, '\n').split('\n');
+  const normalizedLines : string[] = lines.map((rawLine : string) => {
+    const line : string = rawLine;
+    const trimmed : string = line.trim();
+    if (trimmed.length === 0) {
+      return line;
+    }
+    if (/^\d+$/.test(trimmed) || /^\d{2}:\d{2}:\d{2}[,.]\d{1,3}\s*-->/.test(trimmed)) {
+      return line;
+    }
+
+    const withoutTrailingDot : string = line.replace(/\.\s*$/, '');
+    return lowercaseFirstLetter(withoutTrailingDot);
+  });
+
+  return normalizedLines.join('\n');
+}
+
+/**
+ * A sor első betűjét kisbetűsíti (vezető írásjelek figyelmen kívül hagyásával).
+ */
+function lowercaseFirstLetter(input : string) : string {
+  const match : RegExpMatchArray | null = input.match(/^(\s*["'“(\[]*)([A-ZÁÉÍÓÖŐÚÜŰ])/u);
+  if (match === null) {
+    return input;
+  }
+  return `${match[1]}${match[2].toLowerCase()}${input.slice(match[0].length)}`;
 }
 
 /**

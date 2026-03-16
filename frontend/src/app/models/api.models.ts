@@ -24,6 +24,7 @@ export interface VideoDetails extends VideoListItem {
   listenRequested : boolean;
   mediaUrl : string;
   subtitlePresetId : number | null;
+  socialTextCombined : string;
   whisperModel : string;
   whisperLanguage : string;
   wordsPerLine : number;
@@ -56,4 +57,10 @@ export interface SubtitlePreset {
   encoding : string;
   createdAt : string;
   updatedAt : string;
+}
+
+export interface SocialTextResult {
+  title : string;
+  hashtags : string[];
+  combinedText : string;
 }

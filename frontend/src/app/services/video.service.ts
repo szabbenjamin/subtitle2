@@ -1,7 +1,7 @@
 import { HttpClient, HttpEvent, HttpEventType, HttpResponse } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { catchError, firstValueFrom, Observable, of, Subscription, tap } from 'rxjs';
-import { VideoDetails, VideoListItem } from '../models/api.models';
+import { SocialTextResult, VideoDetails, VideoListItem } from '../models/api.models';
 
 interface InitUploadResponse {
   uploadId : string;
@@ -209,6 +209,15 @@ export class VideoService {
    */
   public exportBurnedVideo(id : number) : Observable<Blob> {
     return this.httpClient.post(`/api/videos/${id}/export`, {}, { responseType: 'blob' });
+  }
+
+  /**
+   * Cím + hashtag generálás a videó jelenlegi szövegkönyvéből.
+   * @param id Videó azonosító.
+   * @returns Generált szöveg.
+   */
+  public generateSocialText(id : number) : Observable<SocialTextResult> {
+    return this.httpClient.post<SocialTextResult>(`/api/videos/${id}/social-text`, {});
   }
 
   /**

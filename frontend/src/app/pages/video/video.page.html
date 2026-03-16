@@ -9,7 +9,21 @@
 } @else if (video !== undefined) {
   <section class="video-layout">
     <aside class="left">
-      <video [src]="video.mediaUrl" controls preload="metadata"></video>
+      <div class="video-preview-wrap">
+        <video
+          [src]="video.mediaUrl"
+          controls
+          preload="metadata"
+          (timeupdate)="onVideoTimeUpdate($event)"
+          (seeked)="onVideoTimeUpdate($event)"
+          (loadedmetadata)="onVideoTimeUpdate($event)"
+        ></video>
+        @if (previewSubtitleText.length > 0) {
+          <div class="preview-overlay">
+            <p class="preview-subtitle">{{ previewSubtitleText }}</p>
+          </div>
+        }
+      </div>
       <section class="whisper-config">
         <h4>Whisper beállítások</h4>
         <label>
@@ -85,113 +99,122 @@
         }
       </select>
 
-      <div class="settings-grid">
-        <div>
-          <label class="mt-2" for="preset-name">Sablon neve:</label>
-          <input id="preset-name" type="text" [(ngModel)]="presetForm.name" (ngModelChange)="onPresetFieldChange()" />
+      <button type="button" class="collapse-toggle" (click)="isPresetDetailsOpen = !isPresetDetailsOpen">
+        @if (isPresetDetailsOpen === true) {
+          Részletek elrejtése
+        } @else {
+          Részletek megjelenítése
+        }
+      </button>
 
-          <label class="mt-2" for="fontname">Betűtípus:</label>
-          <select id="fontname" [(ngModel)]="presetForm.fontName" (ngModelChange)="onPresetFieldChange()">
-            @for (font of fontOptions; track font) {
-              <option [value]="font">{{ font }}</option>
-            }
-          </select>
+      @if (isPresetDetailsOpen === true) {
+        <div class="settings-grid">
+          <div>
+            <label class="mt-2" for="preset-name">Sablon neve:</label>
+            <input id="preset-name" type="text" [(ngModel)]="presetForm.name" (ngModelChange)="onPresetFieldChange()" />
 
-          <label class="mt-2" for="fontsize">Betű mérete:</label>
-          <input id="fontsize" type="number" min="8" max="240" [(ngModel)]="presetForm.fontSize" (ngModelChange)="onPresetFieldChange()" />
+            <label class="mt-2" for="fontname">Betűtípus:</label>
+            <select id="fontname" [(ngModel)]="presetForm.fontName" (ngModelChange)="onPresetFieldChange()">
+              @for (font of fontOptions; track font) {
+                <option [value]="font">{{ font }}</option>
+              }
+            </select>
 
-          <label class="mt-2" for="primaryColour">Elsődleges szín:</label>
-          <input id="primaryColour" type="color" [(ngModel)]="presetForm.primaryColour" (ngModelChange)="onPresetFieldChange()" />
+            <label class="mt-2" for="fontsize">Betű mérete:</label>
+            <input id="fontsize" type="number" min="8" max="240" [(ngModel)]="presetForm.fontSize" (ngModelChange)="onPresetFieldChange()" />
 
-          <label class="mt-2" for="secondaryColour">Másodlagos szín:</label>
-          <input id="secondaryColour" type="color" [(ngModel)]="presetForm.secondaryColour" (ngModelChange)="onPresetFieldChange()" />
+            <label class="mt-2" for="primaryColour">Elsődleges szín:</label>
+            <input id="primaryColour" type="color" [(ngModel)]="presetForm.primaryColour" (ngModelChange)="onPresetFieldChange()" />
 
-          <label class="mt-2" for="outlineColour">Körvonal:</label>
-          <input id="outlineColour" type="color" [(ngModel)]="presetForm.outlineColour" (ngModelChange)="onPresetFieldChange()" />
+            <label class="mt-2" for="secondaryColour">Másodlagos szín:</label>
+            <input id="secondaryColour" type="color" [(ngModel)]="presetForm.secondaryColour" (ngModelChange)="onPresetFieldChange()" />
 
-          <label class="mt-2" for="backColour">Árnyék:</label>
-          <input id="backColour" type="color" [(ngModel)]="presetForm.backColour" (ngModelChange)="onPresetFieldChange()" />
+            <label class="mt-2" for="outlineColour">Körvonal:</label>
+            <input id="outlineColour" type="color" [(ngModel)]="presetForm.outlineColour" (ngModelChange)="onPresetFieldChange()" />
 
-          <label class="mt-2" for="bold">Félkövér:</label>
-          <select id="bold" [ngModel]="presetForm.bold ? 1 : 0" (ngModelChange)="presetForm.bold = $event === 1; onPresetFieldChange()">
-            <option [ngValue]="0">Nem</option>
-            <option [ngValue]="1">Igen</option>
-          </select>
+            <label class="mt-2" for="backColour">Árnyék:</label>
+            <input id="backColour" type="color" [(ngModel)]="presetForm.backColour" (ngModelChange)="onPresetFieldChange()" />
 
-          <label class="mt-2" for="italic">Dőlt:</label>
-          <select id="italic" [ngModel]="presetForm.italic ? 1 : 0" (ngModelChange)="presetForm.italic = $event === 1; onPresetFieldChange()">
-            <option [ngValue]="0">Nem</option>
-            <option [ngValue]="1">Igen</option>
-          </select>
+            <label class="mt-2" for="bold">Félkövér:</label>
+            <select id="bold" [ngModel]="presetForm.bold ? 1 : 0" (ngModelChange)="presetForm.bold = $event === 1; onPresetFieldChange()">
+              <option [ngValue]="0">Nem</option>
+              <option [ngValue]="1">Igen</option>
+            </select>
 
-          <label class="mt-2" for="underline">Aláhúzott:</label>
-          <select id="underline" [ngModel]="presetForm.underline ? 1 : 0" (ngModelChange)="presetForm.underline = $event === 1; onPresetFieldChange()">
-            <option [ngValue]="0">Nem</option>
-            <option [ngValue]="1">Igen</option>
-          </select>
+            <label class="mt-2" for="italic">Dőlt:</label>
+            <select id="italic" [ngModel]="presetForm.italic ? 1 : 0" (ngModelChange)="presetForm.italic = $event === 1; onPresetFieldChange()">
+              <option [ngValue]="0">Nem</option>
+              <option [ngValue]="1">Igen</option>
+            </select>
 
-          <label class="mt-2" for="strikeOut">Áthúzott:</label>
-          <select id="strikeOut" [ngModel]="presetForm.strikeOut ? 1 : 0" (ngModelChange)="presetForm.strikeOut = $event === 1; onPresetFieldChange()">
-            <option [ngValue]="0">Nem</option>
-            <option [ngValue]="1">Igen</option>
-          </select>
+            <label class="mt-2" for="underline">Aláhúzott:</label>
+            <select id="underline" [ngModel]="presetForm.underline ? 1 : 0" (ngModelChange)="presetForm.underline = $event === 1; onPresetFieldChange()">
+              <option [ngValue]="0">Nem</option>
+              <option [ngValue]="1">Igen</option>
+            </select>
 
-          <label class="mt-2" for="scaleX">ScaleX:</label>
-          <input id="scaleX" type="number" min="20" max="300" [(ngModel)]="presetForm.scaleX" (ngModelChange)="onPresetFieldChange()" />
+            <label class="mt-2" for="strikeOut">Áthúzott:</label>
+            <select id="strikeOut" [ngModel]="presetForm.strikeOut ? 1 : 0" (ngModelChange)="presetForm.strikeOut = $event === 1; onPresetFieldChange()">
+              <option [ngValue]="0">Nem</option>
+              <option [ngValue]="1">Igen</option>
+            </select>
 
-          <label class="mt-2" for="scaleY">ScaleY:</label>
-          <input id="scaleY" type="number" min="20" max="300" [(ngModel)]="presetForm.scaleY" (ngModelChange)="onPresetFieldChange()" />
+            <label class="mt-2" for="scaleX">ScaleX:</label>
+            <input id="scaleX" type="number" min="20" max="300" [(ngModel)]="presetForm.scaleX" (ngModelChange)="onPresetFieldChange()" />
+
+            <label class="mt-2" for="scaleY">ScaleY:</label>
+            <input id="scaleY" type="number" min="20" max="300" [(ngModel)]="presetForm.scaleY" (ngModelChange)="onPresetFieldChange()" />
+          </div>
+
+          <div>
+            <label class="mt-2" for="spacing">Spacing:</label>
+            <input id="spacing" type="number" min="-40" max="80" [(ngModel)]="presetForm.spacing" (ngModelChange)="onPresetFieldChange()" />
+
+            <label class="mt-2" for="angle">Angle:</label>
+            <input id="angle" type="number" min="-360" max="360" [(ngModel)]="presetForm.angle" (ngModelChange)="onPresetFieldChange()" />
+
+            <label class="mt-2" for="borderStyle">Keret típusa:</label>
+            <select id="borderStyle" [(ngModel)]="presetForm.borderStyle" (ngModelChange)="onPresetFieldChange()">
+              <option [ngValue]="1">Körvonalas</option>
+              <option [ngValue]="4">Félig átlátszó</option>
+              <option [ngValue]="3">Teljesen kitöltött</option>
+            </select>
+
+            <label class="mt-2" for="outline">Árnyék vastagsága:</label>
+            <input id="outline" type="number" min="0" max="24" [(ngModel)]="presetForm.outline" (ngModelChange)="onPresetFieldChange()" />
+
+            <label class="mt-2" for="shadow">Árnyék távolsága:</label>
+            <input id="shadow" type="number" min="0" max="24" [(ngModel)]="presetForm.shadow" (ngModelChange)="onPresetFieldChange()" />
+
+            <label class="mt-2" for="alignment">Rendezés:</label>
+            <select id="alignment" [(ngModel)]="presetForm.alignment" (ngModelChange)="onPresetFieldChange()">
+              @for (alignment of alignmentOptions; track alignment.value) {
+                <option [ngValue]="alignment.value">{{ alignment.label }}</option>
+              }
+            </select>
+
+            <label class="mt-2" for="marginL">Bal margó:</label>
+            <input id="marginL" type="number" min="0" max="300" [(ngModel)]="presetForm.marginL" (ngModelChange)="onPresetFieldChange()" />
+
+            <label class="mt-2" for="marginR">Jobb margó:</label>
+            <input id="marginR" type="number" min="0" max="300" [(ngModel)]="presetForm.marginR" (ngModelChange)="onPresetFieldChange()" />
+
+            <label class="mt-2" for="marginV">Függőleges margó:</label>
+            <input id="marginV" type="number" min="0" max="300" [(ngModel)]="presetForm.marginV" (ngModelChange)="onPresetFieldChange()" />
+
+            <label class="mt-2" for="encoding">Encoding:</label>
+            <input id="encoding" type="text" [(ngModel)]="presetForm.encoding" (ngModelChange)="onPresetFieldChange()" />
+          </div>
         </div>
 
-        <div>
-          <label class="mt-2" for="spacing">Spacing:</label>
-          <input id="spacing" type="number" min="-40" max="80" [(ngModel)]="presetForm.spacing" (ngModelChange)="onPresetFieldChange()" />
-
-          <label class="mt-2" for="angle">Angle:</label>
-          <input id="angle" type="number" min="-360" max="360" [(ngModel)]="presetForm.angle" (ngModelChange)="onPresetFieldChange()" />
-
-          <label class="mt-2" for="borderStyle">Keret típusa:</label>
-          <select id="borderStyle" [(ngModel)]="presetForm.borderStyle" (ngModelChange)="onPresetFieldChange()">
-            <option [ngValue]="1">Körvonalas</option>
-            <option [ngValue]="4">Félig átlátszó</option>
-            <option [ngValue]="3">Teljesen kitöltött</option>
-          </select>
-
-          <label class="mt-2" for="outline">Árnyék vastagsága:</label>
-          <input id="outline" type="number" min="0" max="24" [(ngModel)]="presetForm.outline" (ngModelChange)="onPresetFieldChange()" />
-
-          <label class="mt-2" for="shadow">Árnyék távolsága:</label>
-          <input id="shadow" type="number" min="0" max="24" [(ngModel)]="presetForm.shadow" (ngModelChange)="onPresetFieldChange()" />
-
-          <label class="mt-2" for="alignment">Rendezés:</label>
-          <select id="alignment" [(ngModel)]="presetForm.alignment" (ngModelChange)="onPresetFieldChange()">
-            @for (alignment of alignmentOptions; track alignment.value) {
-              <option [ngValue]="alignment.value">{{ alignment.label }}</option>
-            }
-          </select>
-
-          <label class="mt-2" for="marginL">Bal margó:</label>
-          <input id="marginL" type="number" min="0" max="300" [(ngModel)]="presetForm.marginL" (ngModelChange)="onPresetFieldChange()" />
-
-          <label class="mt-2" for="marginR">Jobb margó:</label>
-          <input id="marginR" type="number" min="0" max="300" [(ngModel)]="presetForm.marginR" (ngModelChange)="onPresetFieldChange()" />
-
-          <label class="mt-2" for="marginV">Függőleges margó:</label>
-          <input id="marginV" type="number" min="0" max="300" [(ngModel)]="presetForm.marginV" (ngModelChange)="onPresetFieldChange()" />
-
-          <label class="mt-2" for="encoding">Encoding:</label>
-          <input id="encoding" type="text" [(ngModel)]="presetForm.encoding" (ngModelChange)="onPresetFieldChange()" />
-        </div>
-      </div>
-
-      @if (presetSaveState.length > 0) {
-        <p class="status">{{ presetSaveState }}</p>
-      }
-      @if (presetAssignState.length > 0) {
-        <p class="status">{{ presetAssignState }}</p>
+        @if (presetSaveState.length > 0) {
+          <p class="status">{{ presetSaveState }}</p>
+        }
+        @if (presetAssignState.length > 0) {
+          <p class="status">{{ presetAssignState }}</p>
+        }
       }
 
-      <hr />
       <button type="button" class="export-btn" [disabled]="isExporting" (click)="onExport()">
         @if (isExporting === true) {
           Exportálás...
@@ -199,10 +222,39 @@
           Exportálás
         }
       </button>
-      <p class="small-note">Az exportálás azonnal megkezdődik és a fájl letöltésre kerül a gépedre.</p>
+      <p class="small-note">Az exportálás azonnal megkezdődik és a videofájl letöltésre kerül a gépedre.</p>
       @if (exportState.length > 0) {
         <p class="status">{{ exportState }}</p>
       }
+
+      <hr />
+      <section class="social-block">
+        <h4>Cím + hashtag generálás</h4>
+        <p class="small-note">
+          A jelenlegi szövegkönyvből készít egy címet és hashtag listát. Az eredmény letölthető `.txt` fájlban.
+        </p>
+        <div class="social-actions">
+          <button type="button" (click)="generateSocialText()" [disabled]="isGeneratingSocial">
+            @if (isGeneratingSocial === true) {
+              Generálás...
+            } @else {
+              Generálás
+            }
+          </button>
+          <button type="button" (click)="downloadSocialText()" [disabled]="generatedSocialCombined.length === 0">
+            TXT letöltés
+          </button>
+        </div>
+        @if (generatedSocialCombined.length > 0) {
+          <div class="social-output">
+            <label for="social-combined"><strong>Beilleszthető szöveg:</strong></label>
+            <textarea id="social-combined" [value]="generatedSocialCombined" readonly></textarea>
+          </div>
+        }
+        @if (socialState.length > 0) {
+          <p class="status">{{ socialState }}</p>
+        }
+      </section>
     </aside>
   </section>
 }

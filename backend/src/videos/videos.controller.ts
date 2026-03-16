@@ -32,7 +32,9 @@ import { UpdateSubtitleDto } from './dto/update-subtitle.dto';
 import { UploadChunkDto } from './dto/upload-chunk.dto';
 import { UpdateVideoPresetDto } from './dto/update-video-preset.dto';
 import { WhisperSettingsDto } from './dto/whisper-settings.dto';
-import { ExportedVideoFile, InitUploadResponse, VideoDetails, VideoListItem, VideosService } from './videos.service';
+import { InitUploadResponse, VideoDetails, VideoListItem, VideosService } from './videos.service';
+import { ExportedVideoFile } from './video-export.service';
+import { SocialTextResult } from './video-social.service';
 
 @Controller('videos')
 @UseGuards(JwtAuthGuard)
@@ -258,5 +260,19 @@ export class VideosController {
     res.setHeader('Content-Disposition', `attachment; filename=\"${exportedFile.fileName}\"`);
     const stream = createReadStream(exportedFile.filePath);
     return new StreamableFile(stream);
+  }
+
+  /**
+   * Cím + hashtag generálása a jelenlegi szövegkönyvből.
+   * @param user Bejelentkezett user.
+   * @param id Videó azonosító.
+   * @returns Generált cím és hashtag lista.
+   */
+  @Post(':id/social-text')
+  public async generateSocialText(
+    @CurrentUser() user : AuthUser,
+    @Param('id', ParseIntPipe) id : number,
+  ) : Promise<SocialTextResult> {
+    return await this.videosService.generateSocialText(user.id, id);
   }
 }

@@ -4,35 +4,11 @@ import { ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { Subject, Subscription, debounceTime, distinctUntilChanged, map } from 'rxjs';
-import { SubtitlePreset, VideoDetails } from '../../models/api.models';
+import { SocialTextResult, SubtitlePreset, VideoDetails } from '../../models/api.models';
 import { SubtitlePresetService, UpdateSubtitlePresetPayload } from '../../services/subtitle-preset.service';
 import { VideoService } from '../../services/video.service';
-
-interface SubtitlePresetForm {
-  name : string;
-  fontName : string;
-  fontSize : number;
-  primaryColour : string;
-  secondaryColour : string;
-  outlineColour : string;
-  backColour : string;
-  bold : boolean;
-  italic : boolean;
-  underline : boolean;
-  strikeOut : boolean;
-  scaleX : number;
-  scaleY : number;
-  spacing : number;
-  angle : number;
-  borderStyle : number;
-  outline : number;
-  shadow : number;
-  alignment : number;
-  marginL : number;
-  marginR : number;
-  marginV : number;
-  encoding : string;
-}
+import { VideoPreviewService } from './video-preview.service';
+import { SubtitleCue, SubtitlePresetForm } from './video.types';
 
 @Component({
   selector: 'app-video-page',
@@ -59,6 +35,13 @@ export class VideoPage implements OnInit, OnDestroy {
   public presetAssignState : string = '';
   public exportState : string = '';
   public isExporting : boolean = false;
+  public isPresetDetailsOpen : boolean = false;
+  public previewSubtitleText : string = '';
+  public isGeneratingSocial : boolean = false;
+  public socialState : string = '';
+  public generatedSocialTitle : string = '';
+  public generatedSocialHashtags : string[] = [];
+  public generatedSocialCombined : string = '';
   public presetForm : SubtitlePresetForm = this.createDefaultPresetForm();
 
   public readonly modelOptions : string[] = ['tiny', 'base', 'small', 'medium', 'large-v3', 'turbo'];
@@ -103,11 +86,14 @@ export class VideoPage implements OnInit, OnDestroy {
   private routeSubscription ?: Subscription;
   private processingPollTimer ?: ReturnType<typeof setInterval>;
   private isApplyingPresetForm : boolean = false;
+  private previewCues : SubtitleCue[] = [];
+  private currentPreviewTimeSeconds : number = 0;
 
   public constructor(
     private readonly activatedRoute : ActivatedRoute,
     private readonly videoService : VideoService,
     private readonly subtitlePresetService : SubtitlePresetService,
+    private readonly videoPreviewService : VideoPreviewService,
     private readonly changeDetectorRef : ChangeDetectorRef,
   ) {}
 
@@ -155,8 +141,23 @@ export class VideoPage implements OnInit, OnDestroy {
    */
   public onSubtitleChange() : void {
     this.saveState = 'Mentés folyamatban...';
+    this.rebuildPreviewCues();
     this.autosaveSubject.next(this.subtitleText);
   }
+
+  /**
+   * Videó időváltozáskor frissíti az aktív preview feliratot.
+   * @param event Video esemény.
+   * @returns Nem ad vissza értéket.
+   */
+  public onVideoTimeUpdate(event : Event) : void {
+    const target : EventTarget | null = event.target;
+    if (target instanceof HTMLVideoElement) {
+      this.currentPreviewTimeSeconds = target.currentTime;
+      this.updatePreviewCueForCurrentTime();
+    }
+  }
+
 
   /**
    * Lehallgatás kérés beküldése.
@@ -304,6 +305,7 @@ export class VideoPage implements OnInit, OnDestroy {
     }
 
     this.presetSaveState = 'Sablon mentése...';
+    this.updatePreviewCueForCurrentTime();
     this.presetSettingsSubject.next();
   }
 
@@ -340,6 +342,53 @@ export class VideoPage implements OnInit, OnDestroy {
         this.changeDetectorRef.detectChanges();
       },
     });
+  }
+
+  /**
+   * Cím + hashtag generálása szövegkönyvből.
+   * @returns Nem ad vissza értéket.
+   */
+  public generateSocialText() : void {
+    if (this.video === undefined) {
+      return;
+    }
+    this.isGeneratingSocial = true;
+    this.socialState = 'Generálás folyamatban...';
+    this.videoService.generateSocialText(this.video.id).subscribe({
+      next: (result : SocialTextResult) => {
+        this.generatedSocialTitle = result.title;
+        this.generatedSocialHashtags = result.hashtags;
+        this.generatedSocialCombined = result.combinedText;
+        this.isGeneratingSocial = false;
+        this.socialState = 'Generálás kész.';
+        this.changeDetectorRef.detectChanges();
+      },
+      error: (error : unknown) => {
+        this.isGeneratingSocial = false;
+        this.socialState = '';
+        this.errorMessage = this.extractErrorMessage(error);
+        this.changeDetectorRef.detectChanges();
+      },
+    });
+  }
+
+  /**
+   * Generált cím + hashtag letöltése txt fájlban.
+   * @returns Nem ad vissza értéket.
+   */
+  public downloadSocialText() : void {
+    if (this.generatedSocialCombined.length === 0) {
+      return;
+    }
+    const blob : Blob = new Blob([`${this.generatedSocialCombined}\n`], { type: 'text/plain;charset=utf-8' });
+    const url : string = URL.createObjectURL(blob);
+    const anchor : HTMLAnchorElement = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${this.buildExportBaseName(this.video?.originalFileName)}-caption-meta.txt`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
   }
 
   /**
@@ -459,6 +508,7 @@ export class VideoPage implements OnInit, OnDestroy {
       next: (video : VideoDetails) => {
         this.applyVideoFromServer(video);
         this.subtitleText = video.subtitleText;
+        this.rebuildPreviewCues();
         this.whisperModel = video.whisperModel;
         this.whisperLanguage = video.whisperLanguage;
         this.wordsPerLine = video.wordsPerLine;
@@ -581,6 +631,7 @@ export class VideoPage implements OnInit, OnDestroy {
       encoding: preset.encoding,
     };
     this.isApplyingPresetForm = false;
+    this.updatePreviewCueForCurrentTime();
   }
 
   /**
@@ -669,6 +720,20 @@ export class VideoPage implements OnInit, OnDestroy {
     this.video = video;
     if (this.saveState !== 'Mentés folyamatban...') {
       this.subtitleText = video.subtitleText;
+      this.rebuildPreviewCues();
+    }
+    this.generatedSocialCombined = video.socialTextCombined ?? '';
+    if (this.generatedSocialCombined.length > 0) {
+      const lines : string[] = this.generatedSocialCombined.split('\n').map((line : string) => line.trim()).filter((line : string) => line.length > 0);
+      this.generatedSocialTitle = lines[0] ?? '';
+      const hashtagLine : string = lines.slice(1).join(' ');
+      this.generatedSocialHashtags = hashtagLine
+        .split(/\s+/)
+        .map((item : string) => item.trim())
+        .filter((item : string) => item.startsWith('#'));
+    } else {
+      this.generatedSocialTitle = '';
+      this.generatedSocialHashtags = [];
     }
     this.whisperModel = video.whisperModel;
     this.whisperLanguage = video.whisperLanguage;
@@ -740,5 +805,22 @@ export class VideoPage implements OnInit, OnDestroy {
       }
     }
     return 'Nem sikerült betölteni a videó oldalát.';
+  }
+
+  /**
+   * SRT-ből preview cue lista újraépítése.
+   * @returns Nem ad vissza értéket.
+   */
+  private rebuildPreviewCues() : void {
+    this.previewCues = this.videoPreviewService.parseSrtToCues(this.subtitleText);
+    this.updatePreviewCueForCurrentTime();
+  }
+
+  /**
+   * Aktuális videóidő alapján kiválasztja a látható feliratot.
+   * @returns Nem ad vissza értéket.
+   */
+  private updatePreviewCueForCurrentTime() : void {
+    this.previewSubtitleText = this.videoPreviewService.findActiveText(this.previewCues, this.currentPreviewTimeSeconds);
   }
 }

@@ -38,6 +38,38 @@ video {
   background: #000000;
 }
 
+.video-preview-wrap {
+  position: relative;
+}
+
+.preview-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  padding: 8px 16px 22px;
+  pointer-events: none;
+}
+
+.preview-subtitle {
+  margin: 0;
+  white-space: pre-line;
+  line-height: 1.2;
+  text-align: center;
+  border-radius: 0.25rem;
+  max-width: 100%;
+  font-family: 'Arial', sans-serif;
+  font-size: 20px;
+  font-weight: 600;
+  color: #ffffff;
+  text-shadow:
+    -1px 0 #000000,
+    1px 0 #000000,
+    0 -1px #000000,
+    0 1px #000000;
+}
+
 .whisper-config {
   margin-top: 0.85rem;
   padding: 0.75rem;
@@ -180,6 +212,14 @@ button:disabled {
   gap: 0.9rem;
 }
 
+.collapse-toggle {
+  width: 100%;
+  margin-top: 0.7rem;
+  background: color-mix(in srgb, var(--surface-color) 88%, transparent);
+  color: var(--text-color);
+  border: 1px solid color-mix(in srgb, var(--border-color) 84%, #8ac7ec 16%);
+}
+
 .mt-2 {
   margin-top: 0.6rem;
 }
@@ -192,6 +232,44 @@ hr {
 
 .export-btn {
   background: linear-gradient(135deg, #0f66cb, #238ef1);
+}
+
+.social-block h4 {
+  margin: 0;
+  font-size: 0.96rem;
+}
+
+.social-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+
+.social-actions button {
+  margin-top: 0;
+}
+
+.social-output {
+  margin-top: 0.6rem;
+  border: 1px solid color-mix(in srgb, var(--border-color) 84%, #8ac7ec 16%);
+  border-radius: 8px;
+  padding: 0.6rem 0.7rem;
+  background: color-mix(in srgb, var(--surface-color) 92%, transparent);
+}
+
+.social-output p {
+  margin: 0.22rem 0;
+}
+
+.social-output label {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.social-output textarea {
+  min-height: 120px;
+  font-family: 'Fira Code', monospace;
 }
 
 @keyframes spin {

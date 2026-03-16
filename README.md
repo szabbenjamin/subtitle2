@@ -88,9 +88,25 @@ Backend `.env` beállítás:
 ```env
 WHISPER_COMMAND=/home/winben/whisper/.venv/bin/whisper
 WHISPER_QUEUE_POLL_MS=2500
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-3.5-turbo
+OPENAI_TIMEOUT_MS=25000
 ```
 
 Ha rootként telepítetted, a backend általában nem fogja látni a binárist a PATH-ban.
+
+## Backend startup és port kezelés
+
+A backend induláskor alapból megpróbálja felszabadítani a `PORT`-ot (alapértelmezésben `3000`), ha azon már egy másik process figyel.  
+Ez segít elkerülni az `EADDRINUSE` hibát fejlesztés közben.
+
+Kikapcsolás `.env`-ben:
+
+```env
+FORCE_FREE_PORT_ON_START=false
+```
+
+Alapértelmezés: bekapcsolt (`true` viselkedés, ha nincs megadva).
 
 ## CI/CD + PM2 telepítés
 

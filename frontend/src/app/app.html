@@ -1,11 +1,8 @@
 <div class="app-shell">
   <header class="main-header">
-    <a routerLink="/lista" class="brand">
-      <span class="brand-dot"></span>
-      subtitle2
-    </a>
     <nav>
-      @if (isLoggedIn() === true) {
+      <div class="pull-right">
+        @if (isLoggedIn() === true) {
         <a routerLink="/lista">Lista</a>
       } @else {
         <a routerLink="/login">Login</a>
@@ -20,6 +17,7 @@
       @if (isLoggedIn() === true) {
         <button type="button" class="logout-btn" (click)="logout()">Kilépés</button>
       }
+      </div>
     </nav>
   </header>
 

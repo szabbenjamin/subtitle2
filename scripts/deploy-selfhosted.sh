@@ -7,7 +7,7 @@ TARGET_HOME="${TARGET_HOME:-/home/$TARGET_USER}"
 BACKEND_DEPLOY_ROOT="${BACKEND_DEPLOY_ROOT:-$TARGET_HOME/subtitle2}"
 FRONTEND_WEB_ROOT="${FRONTEND_WEB_ROOT:-/var/www/html}"
 PM2_APP_NAME="${PM2_APP_NAME:-subtitle2}"
-FRONTEND_BUILD_DIR="${PROJECT_ROOT}/frontend/dist/frontend/browser"
+FRONTEND_BUILD_DIR="${FRONTEND_BUILD_DIR:-}"
 BACKEND_DIR="$BACKEND_DEPLOY_ROOT/backend"
 PROJECT_ROOT_REAL="$(realpath "$PROJECT_ROOT")"
 BACKEND_DEPLOY_ROOT_REAL="$(realpath -m "$BACKEND_DEPLOY_ROOT")"
@@ -54,6 +54,33 @@ run_user_shell() {
   "
 }
 
+resolve_frontend_build_dir() {
+  if [[ -n "$FRONTEND_BUILD_DIR" && -d "$FRONTEND_BUILD_DIR" ]]; then
+    return 0
+  fi
+
+  local preferred="${PROJECT_ROOT}/frontend/dist/frontend/browser"
+  if [[ -d "$preferred" ]]; then
+    FRONTEND_BUILD_DIR="$preferred"
+    return 0
+  fi
+
+  local detected
+  detected="$(find "${PROJECT_ROOT}/frontend/dist" -maxdepth 3 -type d -name browser 2>/dev/null | head -n 1 || true)"
+  if [[ -n "$detected" ]]; then
+    FRONTEND_BUILD_DIR="$detected"
+    return 0
+  fi
+
+  detected="$(find "${PROJECT_ROOT}/frontend/dist" -maxdepth 2 -mindepth 1 -type d 2>/dev/null | head -n 1 || true)"
+  if [[ -n "$detected" ]]; then
+    FRONTEND_BUILD_DIR="$detected"
+    return 0
+  fi
+
+  return 1
+}
+
 mkdir -p "$BACKEND_DEPLOY_ROOT" "$BACKEND_DIR" "$BACKEND_DIR/data" "$BACKEND_DIR/uploads" "$FRONTEND_WEB_ROOT" 2>/dev/null || {
   if [[ -n "$SUDO" ]]; then
     $SUDO mkdir -p "$BACKEND_DEPLOY_ROOT" "$BACKEND_DIR" "$BACKEND_DIR/data" "$BACKEND_DIR/uploads" "$FRONTEND_WEB_ROOT"
@@ -65,12 +92,19 @@ mkdir -p "$BACKEND_DEPLOY_ROOT" "$BACKEND_DIR" "$BACKEND_DIR/data" "$BACKEND_DIR
 }
 
 if ! run_user_shell "command -v pm2 >/dev/null 2>&1"; then
+  if run_user_shell "command -v npm >/dev/null 2>&1"; then
+    echo "pm2 nem található PATH-ban, globális telepítés indul..."
+    run_user_shell "npm i -g pm2"
+  fi
+fi
+
+if ! run_user_shell "command -v pm2 >/dev/null 2>&1"; then
   echo "HIBA: pm2 nincs telepítve vagy nincs PATH-ban."
   echo "Futtasd egyszer: bash scripts/install-selfhosted.sh"
   exit 1
 fi
 
-if [[ ! -d "$FRONTEND_BUILD_DIR" ]]; then
+if ! resolve_frontend_build_dir; then
   echo "HIBA: frontend build könyvtár hiányzik: $FRONTEND_BUILD_DIR"
   echo "Ellenőrizd, hogy a CI futtatta-e a frontend 'npm run build' lépést."
   exit 1

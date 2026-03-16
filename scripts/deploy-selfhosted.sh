@@ -34,7 +34,11 @@ run_as_target_user() {
   if [[ "$(id -un)" == "$TARGET_USER" ]]; then
     "$@"
   else
-    $SUDO -u "$TARGET_USER" "$@"
+    $SUDO -H -u "$TARGET_USER" env \
+      HOME="$TARGET_HOME" \
+      USER="$TARGET_USER" \
+      LOGNAME="$TARGET_USER" \
+      "$@"
   fi
 }
 

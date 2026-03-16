@@ -42,7 +42,11 @@ run_as_target_user() {
   if [[ "$(id -un)" == "$TARGET_USER" ]]; then
     "$@"
   else
-    $SUDO -u "$TARGET_USER" "$@"
+    $SUDO -H -u "$TARGET_USER" env \
+      HOME="$TARGET_HOME" \
+      USER="$TARGET_USER" \
+      LOGNAME="$TARGET_USER" \
+      "$@"
   fi
 }
 
@@ -55,7 +59,7 @@ install_system_packages() {
 install_nvm_node24() {
   echo "[2/7] nvm + Node 24 ellenőrzés/telepítés..."
   run_as_target_user bash -lc '
-  export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+  export NVM_DIR="$HOME/.nvm"
 
   if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
     curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
@@ -81,7 +85,7 @@ BASHRC_EOF
 install_pm2() {
   echo "[3/7] pm2 telepítése..."
   run_as_target_user bash -lc '
-  export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+  export NVM_DIR="$HOME/.nvm"
   # shellcheck disable=SC1090
   source "$NVM_DIR/nvm.sh"
   nvm use 24 >/dev/null

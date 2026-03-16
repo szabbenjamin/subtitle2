@@ -3,20 +3,23 @@
     <nav>
       <div class="pull-right">
         @if (isLoggedIn() === true) {
-        <a routerLink="/lista">Lista</a>
-      } @else {
-        <a routerLink="/login">Login</a>
-      }
-      <button type="button" class="icon-btn" (click)="themeService.toggleTheme()" [attr.aria-label]="'Téma váltása: ' + themeService.theme()">
-        @if (themeService.theme() === 'light') {
-          <span class="icon-sun" aria-hidden="true"></span>
+          <a routerLink="/lista">Lista</a>
+          <a routerLink="/tokenek" class="token-balance">Token: {{ currentTokenBalance() }}</a>
         } @else {
-          <span class="icon-moon" aria-hidden="true"></span>
+          <a routerLink="/login">Login</a>
         }
-      </button>
-      @if (isLoggedIn() === true) {
-        <button type="button" class="logout-btn" (click)="logout()">Kilépés</button>
-      }
+
+        <button type="button" class="icon-btn" (click)="themeService.toggleTheme()" [attr.aria-label]="'Téma váltása: ' + themeService.theme()">
+          @if (themeService.theme() === 'light') {
+            <span class="icon-sun" aria-hidden="true"></span>
+          } @else {
+            <span class="icon-moon" aria-hidden="true"></span>
+          }
+        </button>
+
+        @if (isLoggedIn() === true) {
+          <button type="button" class="logout-btn" (click)="logout()">Kilépés</button>
+        }
       </div>
     </nav>
   </header>

@@ -6,6 +6,7 @@ export interface UserProfile {
   id : number;
   email : string;
   isEmailVerified : boolean;
+  tokenBalance : number;
   createdAt : string;
 }
 
@@ -63,4 +64,17 @@ export interface SocialTextResult {
   title : string;
   hashtags : string[];
   combinedText : string;
+}
+
+export interface TokenBalanceResponse {
+  tokenBalance : number;
+}
+
+export interface TokenHistoryItem {
+  id : number;
+  delta : number;
+  balanceAfter : number;
+  type : string;
+  description : string;
+  createdAt : string;
 }

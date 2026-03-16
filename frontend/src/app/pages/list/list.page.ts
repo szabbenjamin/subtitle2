@@ -1,8 +1,10 @@
 import { CommonModule } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectorRef, Component, ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { forkJoin } from 'rxjs';
 import { VideoDetails, VideoListItem } from '../../models/api.models';
+import { TokenService } from '../../services/token.service';
 import { ChunkUploadHandle, UploadCancelledError, VideoService } from '../../services/video.service';
 
 @Component({
@@ -24,10 +26,12 @@ export class ListPage implements OnInit, OnDestroy {
   public isUploading : boolean = false;
   public hiddenOpen : boolean = false;
   public isLoadingLists : boolean = false;
+  public errorMessage : string = '';
   private uploadHandle ?: ChunkUploadHandle;
 
   public constructor(
     private readonly videoService : VideoService,
+    private readonly tokenService : TokenService,
     private readonly router : Router,
     private readonly changeDetectorRef : ChangeDetectorRef,
   ) {}
@@ -37,6 +41,7 @@ export class ListPage implements OnInit, OnDestroy {
    * @returns Nem ad vissza értéket.
    */
   public ngOnInit() : void {
+    this.tokenService.refreshBalance();
     this.reloadLists();
   }
 
@@ -90,6 +95,7 @@ export class ListPage implements OnInit, OnDestroy {
     }
 
     this.isUploading = true;
+    this.errorMessage = '';
     this.uploadProgress = 0;
     this.uploadStatusText = 'Feltöltés indítása...';
     const selectedFile : File = this.selectedFile;
@@ -102,6 +108,7 @@ export class ListPage implements OnInit, OnDestroy {
     void this.uploadHandle.promise
       .then((video : VideoDetails) => {
         this.finishUpload('Kész');
+        this.tokenService.refreshBalance();
         void this.router.navigate(['/video', video.id]);
       })
       .catch((error : unknown) => {
@@ -109,6 +116,9 @@ export class ListPage implements OnInit, OnDestroy {
           this.finishUpload('Feltöltés megszakítva');
         } else {
           this.finishUpload('Feltöltési hiba');
+          this.errorMessage = this.extractErrorMessage(error);
+          window.alert(this.errorMessage);
+          this.changeDetectorRef.detectChanges();
         }
       });
   }
@@ -202,5 +212,25 @@ export class ListPage implements OnInit, OnDestroy {
     this.uploadHandle = undefined;
     this.uploadStatusText = statusText;
     this.changeDetectorRef.detectChanges();
+  }
+
+  /**
+   * Backend hiba objektumból felhasználóbarát üzenet kinyerése.
+   */
+  private extractErrorMessage(error : unknown) : string {
+    if (error instanceof HttpErrorResponse) {
+      const payload : unknown = error.error;
+      if (typeof payload === 'object' && payload !== null) {
+        const message : unknown = (payload as { message ?: unknown }).message;
+        if (typeof message === 'string' && message.length > 0) {
+          return message;
+        }
+      }
+      if (typeof payload === 'string' && payload.length > 0) {
+        return payload;
+      }
+    }
+
+    return 'A művelet nem hajtható végre. Kérlek, vedd fel a kapcsolatot a szoftver üzemeltetőjével.';
   }
 }

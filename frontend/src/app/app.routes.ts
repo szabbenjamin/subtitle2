@@ -2,6 +2,7 @@ import { Routes } from '@angular/router';
 import { authGuard } from './guards/auth.guard';
 import { ListPage } from './pages/list/list.page';
 import { LoginPage } from './pages/login/login.page';
+import { TokensPage } from './pages/tokens/tokens.page';
 import { VideoPage } from './pages/video/video.page';
 
 export const routes : Routes = [
@@ -29,6 +30,11 @@ export const routes : Routes = [
   {
     path: 'video/:id',
     component: VideoPage,
+    canActivate: [authGuard],
+  },
+  {
+    path: 'tokenek',
+    component: TokensPage,
     canActivate: [authGuard],
   },
   {

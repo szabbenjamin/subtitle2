@@ -6,6 +6,11 @@ import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import { Repository } from 'typeorm';
 import { MailService } from '../mail/mail.service';
+import {
+  REGISTRATION_BONUS_TOKENS,
+  TOKEN_ENTRY_TYPE_REGISTRATION,
+} from '../tokens/tokens.constants';
+import { TokensService } from '../tokens/tokens.service';
 import { UserEntity } from '../users/entities/user.entity';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
@@ -20,6 +25,7 @@ export interface SafeUserResponse {
   id : number;
   email : string;
   isEmailVerified : boolean;
+  tokenBalance : number;
   createdAt : Date;
 }
 
@@ -31,6 +37,7 @@ export class AuthService {
     private readonly jwtService : JwtService,
     private readonly mailService : MailService,
     private readonly configService : ConfigService,
+    private readonly tokensService : TokensService,
   ) {}
 
   /**
@@ -56,9 +63,17 @@ export class AuthService {
       passwordHash,
       isEmailVerified: false,
       emailVerificationToken: verificationToken,
+      lastTokenTopupMonth: this.getCurrentMonthKey(),
     });
 
     const savedUser : UserEntity = await this.usersRepository.save(createdUser);
+    const tokenBalance : number = await this.tokensService.credit(
+      savedUser.id,
+      REGISTRATION_BONUS_TOKENS,
+      TOKEN_ENTRY_TYPE_REGISTRATION,
+      'Regisztrációs kezdő token jóváírás',
+    );
+    savedUser.tokenBalance = tokenBalance;
     const frontendUrl : string = this.configService.get<string>('FRONTEND_BASE_URL') ?? 'https://subtitle2.winben.hu';
     const verifyUrl : string = `${frontendUrl}/login?verifyToken=${verificationToken}`;
     await this.mailService.sendVerificationEmail(savedUser.email, verifyUrl);
@@ -188,6 +203,9 @@ export class AuthService {
       throw new UnauthorizedException('A felhasználó nem található.');
     }
 
+    const tokenBalance : number = (await this.tokensService.getBalance(userId)).tokenBalance;
+    user.tokenBalance = tokenBalance;
+
     return this.toSafeUser(user);
   }
 
@@ -201,7 +219,18 @@ export class AuthService {
       id: user.id,
       email: user.email,
       isEmailVerified: user.isEmailVerified,
+      tokenBalance: user.tokenBalance,
       createdAt: user.createdAt,
     };
+  }
+
+  /**
+   * Aktuális hónap kulcs: YYYY-MM.
+   */
+  private getCurrentMonthKey() : string {
+    const now : Date = new Date();
+    const year : number = now.getUTCFullYear();
+    const month : string = String(now.getUTCMonth() + 1).padStart(2, '0');
+    return `${year}-${month}`;
   }
 }

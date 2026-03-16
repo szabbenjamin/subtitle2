@@ -8,6 +8,17 @@ import { execFile } from 'child_process';
 import { Repository } from 'typeorm';
 import { resolveUploadsDir } from '../common/utils/uploads-dir.util';
 import { SubtitlePresetEntity } from '../subtitle-presets/entities/subtitle-preset.entity';
+import {
+  TOKEN_COST_EXPORT,
+  TOKEN_COST_LISTEN_PER_MINUTE,
+  TOKEN_COST_SOCIAL_TEXT,
+  TOKEN_COST_UPLOAD,
+  TOKEN_ENTRY_TYPE_EXPORT,
+  TOKEN_ENTRY_TYPE_LISTEN,
+  TOKEN_ENTRY_TYPE_SOCIAL_TEXT,
+  TOKEN_ENTRY_TYPE_UPLOAD,
+} from '../tokens/tokens.constants';
+import { TokensService } from '../tokens/tokens.service';
 import { VideoEntity } from './entities/video.entity';
 import { ExportedVideoFile, VideoExportService } from './video-export.service';
 import { SocialTextResult, VideoSocialService } from './video-social.service';
@@ -65,6 +76,7 @@ export class VideosService {
     private readonly configService : ConfigService,
     private readonly videoExportService : VideoExportService,
     private readonly videoSocialService : VideoSocialService,
+    private readonly tokensService : TokensService,
   ) {
     this.uploadsDir = resolveUploadsDir(this.configService.get<string>('UPLOADS_DIR'));
   }
@@ -76,6 +88,12 @@ export class VideosService {
    * @returns A létrehozott videó részletes adatai.
    */
   public async createFromUpload(ownerId : number, file : Express.Multer.File) : Promise<VideoDetails> {
+    await this.tokensService.charge(
+      ownerId,
+      TOKEN_COST_UPLOAD,
+      TOKEN_ENTRY_TYPE_UPLOAD,
+      `Videó feltöltés: ${file.originalname}`,
+    );
     return await this.createFromStoredFile(ownerId, file.originalname, file.filename, file.size);
   }
 
@@ -170,18 +188,31 @@ export class VideosService {
       });
     });
 
-    const fileStat = await stat(finalPath);
-    const video : VideoDetails = await this.createFromStoredFile(
-      ownerId,
-      session.originalFileName,
-      storageFileName,
-      Number(fileStat.size),
-    );
+    try {
+      const fileStat = await stat(finalPath);
+      await this.tokensService.charge(
+        ownerId,
+        TOKEN_COST_UPLOAD,
+        TOKEN_ENTRY_TYPE_UPLOAD,
+        `Videó feltöltés: ${session.originalFileName}`,
+      );
+      const video : VideoDetails = await this.createFromStoredFile(
+        ownerId,
+        session.originalFileName,
+        storageFileName,
+        Number(fileStat.size),
+      );
 
-    this.uploadSessions.delete(dto.uploadId);
-    await rm(uploadDir, { recursive: true, force: true });
+      this.uploadSessions.delete(dto.uploadId);
+      await rm(uploadDir, { recursive: true, force: true });
 
-    return video;
+      return video;
+    } catch (error : unknown) {
+      await rm(finalPath, { force: true });
+      this.uploadSessions.delete(dto.uploadId);
+      await rm(uploadDir, { recursive: true, force: true });
+      throw error;
+    }
   }
 
   /**
@@ -306,6 +337,16 @@ export class VideosService {
    */
   public async requestListen(ownerId : number, videoId : number) : Promise<VideoDetails> {
     const video : VideoEntity = await this.requireOwnedVideo(ownerId, videoId);
+    if (video.processingStatus === 'queued' || video.processingStatus === 'pending') {
+      throw new BadRequestException('A videó már feldolgozás alatt van vagy várólistán van.');
+    }
+    const requiredTokens : number = this.calculateListenTokens(video.durationSeconds);
+    await this.tokensService.charge(
+      ownerId,
+      requiredTokens,
+      TOKEN_ENTRY_TYPE_LISTEN,
+      `Whisper lehallgatás: ${video.originalFileName} (${requiredTokens} token)`,
+    );
     video.listenRequested = true;
     video.processingStatus = 'queued';
     const savedVideo : VideoEntity = await this.videosRepository.save(video);
@@ -337,6 +378,16 @@ export class VideosService {
    */
   public async requestListenWithSettings(ownerId : number, videoId : number, dto : WhisperSettingsDto) : Promise<VideoDetails> {
     const video : VideoEntity = await this.requireOwnedVideo(ownerId, videoId);
+    if (video.processingStatus === 'queued' || video.processingStatus === 'pending') {
+      throw new BadRequestException('A videó már feldolgozás alatt van vagy várólistán van.');
+    }
+    const requiredTokens : number = this.calculateListenTokens(video.durationSeconds);
+    await this.tokensService.charge(
+      ownerId,
+      requiredTokens,
+      TOKEN_ENTRY_TYPE_LISTEN,
+      `Whisper lehallgatás: ${video.originalFileName} (${requiredTokens} token)`,
+    );
     video.whisperModel = dto.model;
     video.whisperLanguage = dto.language;
     video.wordsPerLine = dto.wordsPerLine;
@@ -368,6 +419,12 @@ export class VideosService {
       throw new NotFoundException('A kiválasztott sablon nem található.');
     }
 
+    await this.tokensService.charge(
+      ownerId,
+      TOKEN_COST_EXPORT,
+      TOKEN_ENTRY_TYPE_EXPORT,
+      `Videó exportálás: ${video.originalFileName}`,
+    );
     return await this.videoExportService.exportBurnedVideo(ownerId, video, preset, this.uploadsDir);
   }
 
@@ -379,6 +436,12 @@ export class VideosService {
    */
   public async generateSocialText(ownerId : number, videoId : number) : Promise<SocialTextResult> {
     const video : VideoEntity = await this.requireOwnedVideo(ownerId, videoId);
+    await this.tokensService.charge(
+      ownerId,
+      TOKEN_COST_SOCIAL_TEXT,
+      TOKEN_ENTRY_TYPE_SOCIAL_TEXT,
+      `Cím + hashtag generálás: ${video.originalFileName}`,
+    );
     const generated : SocialTextResult = await this.videoSocialService.generateFromSubtitle(video);
     video.socialTextCombined = generated.combinedText;
     await this.videosRepository.save(video);
@@ -563,6 +626,16 @@ export class VideosService {
       return 'queued';
     }
     return 'idle';
+  }
+
+  /**
+   * Whisper lehallgatás token költség számítás: minden megkezdett perc 5 token.
+   * @param durationSeconds Videó hossza másodpercben.
+   * @returns Szükséges token mennyiség.
+   */
+  private calculateListenTokens(durationSeconds : number) : number {
+    const durationMinutes : number = Math.max(1, Math.ceil(Math.max(0, durationSeconds) / 60));
+    return durationMinutes * TOKEN_COST_LISTEN_PER_MINUTE;
   }
 
   /**

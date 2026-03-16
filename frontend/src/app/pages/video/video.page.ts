@@ -6,6 +6,7 @@ import { ActivatedRoute } from '@angular/router';
 import { Subject, Subscription, debounceTime, distinctUntilChanged, map } from 'rxjs';
 import { SocialTextResult, SubtitlePreset, VideoDetails } from '../../models/api.models';
 import { SubtitlePresetService, UpdateSubtitlePresetPayload } from '../../services/subtitle-preset.service';
+import { TokenService } from '../../services/token.service';
 import { VideoService } from '../../services/video.service';
 import { VideoPreviewService } from './video-preview.service';
 import { SubtitleCue, SubtitlePresetForm } from './video.types';
@@ -93,6 +94,7 @@ export class VideoPage implements OnInit, OnDestroy {
     private readonly activatedRoute : ActivatedRoute,
     private readonly videoService : VideoService,
     private readonly subtitlePresetService : SubtitlePresetService,
+    private readonly tokenService : TokenService,
     private readonly videoPreviewService : VideoPreviewService,
     private readonly changeDetectorRef : ChangeDetectorRef,
   ) {}
@@ -102,6 +104,7 @@ export class VideoPage implements OnInit, OnDestroy {
    * @returns Nem ad vissza értéket.
    */
   public ngOnInit() : void {
+    this.tokenService.refreshBalance();
     this.setupAutosave();
     this.setupWhisperSettingsAutosave();
     this.setupPresetAutosave();
@@ -185,12 +188,14 @@ export class VideoPage implements OnInit, OnDestroy {
         next: (video : VideoDetails) => {
           this.applyVideoFromServer(video);
           this.listenRequestState = 'Lehallgatási kérés rögzítve.';
+          this.tokenService.refreshBalance();
           this.startProcessingPollingIfNeeded();
           this.changeDetectorRef.detectChanges();
         },
-        error: () => {
+        error: (error : unknown) => {
           this.listenRequestState = '';
-          this.errorMessage = 'A lehallgatás jelölése sikertelen.';
+          this.errorMessage = this.extractErrorMessage(error);
+          window.alert(this.errorMessage);
           this.changeDetectorRef.detectChanges();
         },
       });
@@ -333,12 +338,14 @@ export class VideoPage implements OnInit, OnDestroy {
 
         this.isExporting = false;
         this.exportState = 'Exportálás kész, letöltés elindult.';
+        this.tokenService.refreshBalance();
         this.changeDetectorRef.detectChanges();
       },
       error: (error : unknown) => {
         this.isExporting = false;
         this.exportState = '';
         this.errorMessage = this.extractErrorMessage(error);
+        window.alert(this.errorMessage);
         this.changeDetectorRef.detectChanges();
       },
     });
@@ -361,12 +368,14 @@ export class VideoPage implements OnInit, OnDestroy {
         this.generatedSocialCombined = result.combinedText;
         this.isGeneratingSocial = false;
         this.socialState = 'Generálás kész.';
+        this.tokenService.refreshBalance();
         this.changeDetectorRef.detectChanges();
       },
       error: (error : unknown) => {
         this.isGeneratingSocial = false;
         this.socialState = '';
         this.errorMessage = this.extractErrorMessage(error);
+        window.alert(this.errorMessage);
         this.changeDetectorRef.detectChanges();
       },
     });

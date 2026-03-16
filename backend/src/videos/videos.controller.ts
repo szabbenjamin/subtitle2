@@ -20,6 +20,7 @@ import { diskStorage, memoryStorage } from 'multer';
 import type { Response } from 'express';
 import { mkdirSync } from 'fs';
 import { createReadStream } from 'fs';
+import { rm } from 'fs/promises';
 import { extname } from 'path';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -98,7 +99,12 @@ export class VideosController {
       throw new BadRequestException('A fájl feltöltése kötelező.');
     }
 
-    return await this.videosService.createFromUpload(user.id, file);
+    try {
+      return await this.videosService.createFromUpload(user.id, file);
+    } catch (error : unknown) {
+      await rm(file.path, { force: true });
+      throw error;
+    }
   }
 
   /**

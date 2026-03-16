@@ -7,6 +7,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { SubtitlePresetEntity } from '../../subtitle-presets/entities/subtitle-preset.entity';
+import { TokenHistoryEntity } from '../../tokens/entities/token-history.entity';
 import { VideoEntity } from '../../videos/entities/video.entity';
 
 @Entity({ name: 'users' })
@@ -32,11 +33,20 @@ export class UserEntity {
   @Column({ type: 'datetime', nullable: true })
   public resetPasswordExpiresAt ?: Date | null;
 
+  @Column({ type: 'integer', default: 0 })
+  public tokenBalance !: number;
+
+  @Column({ type: 'text', nullable: true })
+  public lastTokenTopupMonth ?: string | null;
+
   @OneToMany(() => VideoEntity, (video : VideoEntity) => video.owner)
   public videos !: VideoEntity[];
 
   @OneToMany(() => SubtitlePresetEntity, (preset : SubtitlePresetEntity) => preset.owner)
   public subtitlePresets !: SubtitlePresetEntity[];
+
+  @OneToMany(() => TokenHistoryEntity, (entry : TokenHistoryEntity) => entry.user)
+  public tokenHistory !: TokenHistoryEntity[];
 
   @CreateDateColumn()
   public createdAt !: Date;

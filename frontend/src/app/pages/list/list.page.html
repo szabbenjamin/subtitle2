@@ -28,6 +28,12 @@
       <span>{{ uploadProgress }}%</span>
     </div>
   }
+  @if (uploadStatusText.length > 0) {
+    <p class="status-line">{{ uploadStatusText }}</p>
+  }
+  @if (errorMessage.length > 0) {
+    <p class="error-line">{{ errorMessage }}</p>
+  }
 
   <section class="panel">
     <h2>Aktív videók</h2>

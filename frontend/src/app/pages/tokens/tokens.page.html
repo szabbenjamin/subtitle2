@@ -1,0 +1,61 @@
+<section class="tokens-layout">
+  <header>
+    <h1>Token history</h1>
+    <p>Itt láthatod a token jóváírásokat és levonásokat időrendben.</p>
+  </header>
+
+  @if (isLoading === true) {
+    <p class="state">Betöltés...</p>
+  } @else if (errorMessage.length > 0) {
+    <p class="state error">{{ errorMessage }}</p>
+  } @else if (rows.length === 0) {
+    <p class="state">Még nincs token tranzakció.</p>
+  } @else {
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Dátum</th>
+            <th>Típus</th>
+            <th>Leírás</th>
+            <th>Változás</th>
+            <th>Egyenleg</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of rows; track row.id) {
+            <tr>
+              <td>{{ row.createdAt | date:'yyyy.MM.dd HH:mm' }}</td>
+              <td>{{ row.type }}</td>
+              <td>{{ row.description }}</td>
+              <td [class.plus]="row.delta > 0" [class.minus]="row.delta < 0">{{ formatDelta(row.delta) }}</td>
+              <td>{{ row.balanceAfter }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+
+  <section class="costs-block">
+    <h2>Token díjszabás</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Művelet</th>
+            <th>Költség</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (item of tokenCosts; track item.action) {
+            <tr>
+              <td>{{ item.action }}</td>
+              <td>{{ item.cost }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
+</section>

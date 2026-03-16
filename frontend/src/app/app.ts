@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component } from '@angular/core';
 import { Router, RouterLink, RouterOutlet } from '@angular/router';
 import { AuthService } from './services/auth.service';
+import { TokenService } from './services/token.service';
 import { ThemeService } from './services/theme.service';
 
 @Component({
@@ -17,6 +18,7 @@ export class App {
 
   public constructor(
     public readonly authService : AuthService,
+    public readonly tokenService : TokenService,
     public readonly themeService : ThemeService,
     private readonly router : Router,
   ) {
@@ -32,11 +34,23 @@ export class App {
   }
 
   /**
+   * Visszaadja az aktuális token egyenleget a fejléc számára.
+   */
+  public currentTokenBalance() : number {
+    const signalBalance : number | null = this.tokenService.balance();
+    if (signalBalance !== null) {
+      return signalBalance;
+    }
+    return this.authService.state().profile?.tokenBalance ?? 0;
+  }
+
+  /**
    * Kilépteti a felhasználót és login oldalra navigál.
    * @returns Nem ad vissza értéket.
    */
   public logout() : void {
     this.authService.logout();
+    this.tokenService.balance.set(null);
     void this.router.navigate(['/login']);
   }
 

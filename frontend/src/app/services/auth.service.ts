@@ -95,6 +95,25 @@ export class AuthService {
   }
 
   /**
+   * Token egyenleg frissítése a lokális auth profilban.
+   * @param tokenBalance Friss token egyenleg.
+   */
+  public updateTokenBalance(tokenBalance : number) : void {
+    const current : AuthState = this.state();
+    if (current.isLoggedIn === false || current.profile === undefined) {
+      return;
+    }
+
+    this.state.set({
+      isLoggedIn: true,
+      profile: {
+        ...current.profile,
+        tokenBalance,
+      },
+    });
+  }
+
+  /**
    * Ellenőrzi, hogy van-e eltárolt token.
    * @returns Igaz, ha van token.
    */

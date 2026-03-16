@@ -3,6 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { MailModule } from '../mail/mail.module';
+import { TokensModule } from '../tokens/tokens.module';
 import { UserEntity } from '../users/entities/user.entity';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -22,6 +23,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
       }),
     }),
     MailModule,
+    TokensModule,
   ],
   providers: [AuthService, JwtAuthGuard],
   controllers: [AuthController],

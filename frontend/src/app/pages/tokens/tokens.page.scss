@@ -1,0 +1,68 @@
+.tokens-layout {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1.4rem;
+  display: grid;
+  gap: 1rem;
+}
+
+header h1 {
+  margin: 0;
+}
+
+header p {
+  margin: 0.4rem 0 0;
+  opacity: 0.8;
+}
+
+.table-wrap {
+  overflow: auto;
+  border: 1px solid color-mix(in srgb, var(--border-color) 82%, #8ac8ed 18%);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-color) 94%, transparent);
+  box-shadow: 0 8px 20px rgba(12, 23, 35, 0.06);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 0.7rem 0.8rem;
+  text-align: left;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 85%, transparent);
+}
+
+thead th {
+  font-weight: 700;
+}
+
+.plus {
+  color: #199a52;
+  font-weight: 700;
+}
+
+.minus {
+  color: #d34b4b;
+  font-weight: 700;
+}
+
+.state {
+  opacity: 0.85;
+}
+
+.state.error {
+  color: #d34b4b;
+}
+
+.costs-block {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.costs-block h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}

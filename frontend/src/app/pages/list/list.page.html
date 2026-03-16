@@ -5,7 +5,7 @@
       <p>A legfrissebb feltöltések legfelül jelennek meg.</p>
     </div>
     <div class="upload-box">
-      <input #picker type="file" hidden (change)="onFileSelected($event)" />
+      <input #picker type="file" accept="video/*,audio/*,.mp4,.mov,.mkv,.webm,.avi,.m4v,.mp3,.wav,.m4a,.aac,.flac,.ogg,.oga,.opus" hidden (change)="onFileSelected($event)" />
       <button type="button" class="picker-btn" (click)="openPicker()">{{ uploadButtonText() }}</button>
       @if (selectedFile !== undefined && isUploading === false) {
         <button

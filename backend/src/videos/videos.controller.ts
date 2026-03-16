@@ -36,6 +36,7 @@ import { WhisperSettingsDto } from './dto/whisper-settings.dto';
 import { InitUploadResponse, VideoDetails, VideoListItem, VideosService } from './videos.service';
 import { ExportedVideoFile } from './video-export.service';
 import { SocialTextResult } from './video-social.service';
+import { isAllowedMediaExtension, isAllowedMediaMimeType } from './video-file-validation.util';
 
 @Controller('videos')
 @UseGuards(JwtAuthGuard)
@@ -92,6 +93,20 @@ export class VideosController {
           callback(null, generated);
         },
       }),
+      fileFilter: (
+        request : Express.Request,
+        file : Express.Multer.File,
+        callback : (error : Error | null, acceptFile : boolean) => void,
+      ) => {
+        void request;
+        const extensionAllowed : boolean = isAllowedMediaExtension(file.originalname);
+        const mimeAllowed : boolean = isAllowedMediaMimeType(file.mimetype);
+        if (extensionAllowed === false && mimeAllowed === false) {
+          callback(new BadRequestException('Csak videó és hangfájl tölthető fel.'), false);
+          return;
+        }
+        callback(null, true);
+      },
     }),
   )
   public async upload(@CurrentUser() user : AuthUser, @UploadedFile() file : Express.Multer.File) : Promise<VideoDetails> {

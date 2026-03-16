@@ -110,6 +110,7 @@ export class VideoService {
           originalFileName: file.name,
           fileSizeBytes: file.size,
           totalChunks,
+          mimeType: file.type,
         }),
       );
       uploadId = initResponse.uploadId;

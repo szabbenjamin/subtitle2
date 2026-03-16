@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsInt, IsString, Min, MinLength } from 'class-validator';
+import { IsInt, IsOptional, IsString, Min, MinLength } from 'class-validator';
 
 export class InitUploadDto {
   @IsString()
@@ -15,4 +15,8 @@ export class InitUploadDto {
   @IsInt()
   @Min(1)
   public totalChunks !: number;
+
+  @IsOptional()
+  @IsString()
+  public mimeType ?: string;
 }

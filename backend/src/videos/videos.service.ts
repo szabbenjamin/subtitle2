@@ -22,6 +22,7 @@ import { TokensService } from '../tokens/tokens.service';
 import { VideoEntity } from './entities/video.entity';
 import { ExportedVideoFile, VideoExportService } from './video-export.service';
 import { SocialTextResult, VideoSocialService } from './video-social.service';
+import { isAllowedMediaExtension, isAllowedMediaMimeType } from './video-file-validation.util';
 import { CompleteUploadDto } from './dto/complete-upload.dto';
 import { InitUploadDto } from './dto/init-upload.dto';
 import { UploadChunkDto } from './dto/upload-chunk.dto';
@@ -88,6 +89,7 @@ export class VideosService {
    * @returns A létrehozott videó részletes adatai.
    */
   public async createFromUpload(ownerId : number, file : Express.Multer.File) : Promise<VideoDetails> {
+    this.assertAllowedMediaFile(file.originalname, file.mimetype);
     await this.tokensService.charge(
       ownerId,
       TOKEN_COST_UPLOAD,
@@ -104,6 +106,7 @@ export class VideosService {
    * @returns Feltöltés session adatai.
    */
   public async initChunkedUpload(ownerId : number, dto : InitUploadDto) : Promise<InitUploadResponse> {
+    this.assertAllowedMediaFile(dto.originalFileName, dto.mimeType);
     const expectedChunks : number = Math.max(1, Math.ceil(dto.fileSizeBytes / this.chunkSizeBytes));
     if (dto.totalChunks !== expectedChunks) {
       throw new BadRequestException('Érvénytelen chunkszám.');
@@ -539,6 +542,22 @@ export class VideosService {
       throw new BadRequestException('Nincs jogosultság ehhez a feltöltési sessionhöz.');
     }
     return session;
+  }
+
+  /**
+   * Csak video/audio fájlok engedélyezése kiterjesztés és MIME alapján.
+   * @param fileName Eredeti fájlnév.
+   * @param mimeType Opcionális MIME típus.
+   */
+  private assertAllowedMediaFile(fileName : string, mimeType ?: string) : void {
+    const extensionAllowed : boolean = isAllowedMediaExtension(fileName);
+    const mimeAllowed : boolean = isAllowedMediaMimeType(mimeType);
+
+    // Chunk initnél a MIME lehet üres, ezért ott kiterjesztés is elég.
+    // Direkt uploadnál mindkettő elérhető; itt akkor engedünk, ha bármelyik egyértelműen média.
+    if (extensionAllowed === false && mimeAllowed === false) {
+      throw new BadRequestException('Csak videó és hangfájl tölthető fel.');
+    }
   }
 
   /**

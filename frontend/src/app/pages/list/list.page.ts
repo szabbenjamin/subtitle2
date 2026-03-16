@@ -28,6 +28,22 @@ export class ListPage implements OnInit, OnDestroy {
   public hiddenOpen : boolean = false;
   public isLoadingLists : boolean = false;
   public errorMessage : string = '';
+  private readonly allowedMediaExtensions : ReadonlySet<string> = new Set<string>([
+    '.mp4',
+    '.mov',
+    '.mkv',
+    '.webm',
+    '.avi',
+    '.m4v',
+    '.mp3',
+    '.wav',
+    '.m4a',
+    '.aac',
+    '.flac',
+    '.ogg',
+    '.oga',
+    '.opus',
+  ]);
   private uploadHandle ?: ChunkUploadHandle;
 
   public constructor(
@@ -83,7 +99,17 @@ export class ListPage implements OnInit, OnDestroy {
       return;
     }
 
-    this.selectedFile = files[0];
+    const selected : File = files[0];
+    if (this.isSupportedMediaFile(selected) === false) {
+      this.selectedFile = undefined;
+      this.errorMessage = 'Csak videó és hangfájl tölthető fel.';
+      this.alertModalService.open(this.errorMessage, 'Hiba');
+      this.uploadProgress = 0;
+      return;
+    }
+
+    this.errorMessage = '';
+    this.selectedFile = selected;
     this.uploadProgress = 0;
   }
 
@@ -234,5 +260,24 @@ export class ListPage implements OnInit, OnDestroy {
     }
 
     return 'A művelet nem hajtható végre. Kérlek, vedd fel a kapcsolatot a szoftver üzemeltetőjével.';
+  }
+
+  /**
+   * Frontend oldali médiafájl ellenőrzés (MIME + kiterjesztés).
+   */
+  private isSupportedMediaFile(file : File) : boolean {
+    const mime : string = file.type.trim().toLowerCase();
+    if (mime.startsWith('video/') || mime.startsWith('audio/')) {
+      return true;
+    }
+
+    const name : string = file.name.trim().toLowerCase();
+    const dotIndex : number = name.lastIndexOf('.');
+    if (dotIndex < 0) {
+      return false;
+    }
+
+    const extension : string = name.slice(dotIndex);
+    return this.allowedMediaExtensions.has(extension);
   }
 }

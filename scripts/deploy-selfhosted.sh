@@ -124,39 +124,39 @@ fi
 if [[ "$IN_PLACE_DEPLOY" == true ]]; then
   echo "In-place deploy mód: BACKEND_DEPLOY_ROOT megegyezik a repository gyökérrel, rsync kihagyva."
 else
-  rsync -av --delete \
+  if ! rsync -av --delete \
     --exclude '.git' \
     --exclude 'node_modules' \
     --exclude 'backend/data' \
     --exclude 'backend/uploads' \
-    "$PROJECT_ROOT/" "$BACKEND_DEPLOY_ROOT/"
-  RSYNC_EXIT=$?
-  if [[ "$RSYNC_EXIT" -ne 0 && -n "$SUDO" ]]; then
-    $SUDO rsync -av --delete \
-      --exclude '.git' \
-      --exclude 'node_modules' \
-      --exclude 'backend/data' \
-      --exclude 'backend/uploads' \
-      "$PROJECT_ROOT/" "$BACKEND_DEPLOY_ROOT/"
-  elif [[ "$RSYNC_EXIT" -ne 0 ]]; then
-    echo "HIBA: Backend rsync sikertelen jogosultsági probléma miatt."
-    exit "$RSYNC_EXIT"
+    "$PROJECT_ROOT/" "$BACKEND_DEPLOY_ROOT/"; then
+    if [[ -n "$SUDO" ]]; then
+      $SUDO rsync -av --delete \
+        --exclude '.git' \
+        --exclude 'node_modules' \
+        --exclude 'backend/data' \
+        --exclude 'backend/uploads' \
+        "$PROJECT_ROOT/" "$BACKEND_DEPLOY_ROOT/"
+    else
+      echo "HIBA: Backend rsync sikertelen jogosultsági probléma miatt."
+      exit 23
+    fi
   fi
 fi
 
 # Frontend static build deploy a webszerver document rootba.
-rsync -av --delete \
+if ! rsync -av --delete \
   --exclude '.well-known' \
-  "$FRONTEND_BUILD_DIR/" "$FRONTEND_WEB_ROOT/"
-RSYNC_FRONTEND_EXIT=$?
-if [[ "$RSYNC_FRONTEND_EXIT" -ne 0 && -n "$SUDO" ]]; then
-  $SUDO rsync -av --delete \
-    --exclude '.well-known' \
-    "$FRONTEND_BUILD_DIR/" "$FRONTEND_WEB_ROOT/"
-elif [[ "$RSYNC_FRONTEND_EXIT" -ne 0 ]]; then
-  echo "HIBA: Frontend rsync sikertelen jogosultsági probléma miatt."
-  echo "Adj írásjogot a runner usernek a $FRONTEND_WEB_ROOT könyvtárra, vagy engedélyezz passwordless sudo-t."
-  exit "$RSYNC_FRONTEND_EXIT"
+  "$FRONTEND_BUILD_DIR/" "$FRONTEND_WEB_ROOT/"; then
+  if [[ -n "$SUDO" ]]; then
+    $SUDO rsync -av --delete \
+      --exclude '.well-known' \
+      "$FRONTEND_BUILD_DIR/" "$FRONTEND_WEB_ROOT/"
+  else
+    echo "HIBA: Frontend rsync sikertelen jogosultsági probléma miatt."
+    echo "Adj írásjogot a runner usernek a $FRONTEND_WEB_ROOT könyvtárra, vagy engedélyezz passwordless sudo-t."
+    exit 23
+  fi
 fi
 
 # Megőrzött fájlok visszaállítása.

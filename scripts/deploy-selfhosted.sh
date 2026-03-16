@@ -24,7 +24,7 @@ if id "$TARGET_USER" >/dev/null 2>&1; then
   fi
 fi
 
-if command -v sudo >/dev/null 2>&1; then
+if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
   SUDO="sudo"
 else
   SUDO=""
@@ -42,13 +42,15 @@ run_as_target_user() {
   fi
 }
 
-$SUDO mkdir -p "$BACKEND_DEPLOY_ROOT"
-$SUDO mkdir -p "$BACKEND_DIR"
-$SUDO mkdir -p "$BACKEND_DIR/data"
-$SUDO mkdir -p "$BACKEND_DIR/uploads"
-$SUDO mkdir -p "$FRONTEND_WEB_ROOT"
-$SUDO chown -R "$TARGET_USER":"$TARGET_USER" "$BACKEND_DEPLOY_ROOT"
-$SUDO chown -R "$TARGET_USER":"$TARGET_USER" "$FRONTEND_WEB_ROOT"
+mkdir -p "$BACKEND_DEPLOY_ROOT" "$BACKEND_DIR" "$BACKEND_DIR/data" "$BACKEND_DIR/uploads" "$FRONTEND_WEB_ROOT" 2>/dev/null || {
+  if [[ -n "$SUDO" ]]; then
+    $SUDO mkdir -p "$BACKEND_DEPLOY_ROOT" "$BACKEND_DIR" "$BACKEND_DIR/data" "$BACKEND_DIR/uploads" "$FRONTEND_WEB_ROOT"
+  else
+    echo "HIBA: Nincs jogosultság a deploy célkönyvtárakhoz, és passwordless sudo sem elérhető."
+    echo "Futtasd egyszer: bash scripts/install-selfhosted.sh"
+    exit 1
+  fi
+}
 
 if ! run_as_target_user bash -lc "command -v pm2 >/dev/null 2>&1"; then
   echo "HIBA: pm2 nincs telepítve vagy nincs PATH-ban."
@@ -75,21 +77,40 @@ fi
 if [[ "$IN_PLACE_DEPLOY" == true ]]; then
   echo "In-place deploy mód: BACKEND_DEPLOY_ROOT megegyezik a repository gyökérrel, rsync kihagyva."
 else
-  $SUDO rsync -av --delete \
+  rsync -av --delete \
     --exclude '.git' \
     --exclude 'node_modules' \
     --exclude 'backend/data' \
     --exclude 'backend/uploads' \
     "$PROJECT_ROOT/" "$BACKEND_DEPLOY_ROOT/"
+  RSYNC_EXIT=$?
+  if [[ "$RSYNC_EXIT" -ne 0 && -n "$SUDO" ]]; then
+    $SUDO rsync -av --delete \
+      --exclude '.git' \
+      --exclude 'node_modules' \
+      --exclude 'backend/data' \
+      --exclude 'backend/uploads' \
+      "$PROJECT_ROOT/" "$BACKEND_DEPLOY_ROOT/"
+  elif [[ "$RSYNC_EXIT" -ne 0 ]]; then
+    echo "HIBA: Backend rsync sikertelen jogosultsági probléma miatt."
+    exit "$RSYNC_EXIT"
+  fi
 fi
 
 # Frontend static build deploy a webszerver document rootba.
-$SUDO rsync -av --delete \
+rsync -av --delete \
   --exclude '.well-known' \
   "$FRONTEND_BUILD_DIR/" "$FRONTEND_WEB_ROOT/"
-
-$SUDO chown -R "$TARGET_USER":"$TARGET_USER" "$BACKEND_DEPLOY_ROOT"
-$SUDO chown -R "$TARGET_USER":"$TARGET_USER" "$FRONTEND_WEB_ROOT"
+RSYNC_FRONTEND_EXIT=$?
+if [[ "$RSYNC_FRONTEND_EXIT" -ne 0 && -n "$SUDO" ]]; then
+  $SUDO rsync -av --delete \
+    --exclude '.well-known' \
+    "$FRONTEND_BUILD_DIR/" "$FRONTEND_WEB_ROOT/"
+elif [[ "$RSYNC_FRONTEND_EXIT" -ne 0 ]]; then
+  echo "HIBA: Frontend rsync sikertelen jogosultsági probléma miatt."
+  echo "Adj írásjogot a runner usernek a $FRONTEND_WEB_ROOT könyvtárra, vagy engedélyezz passwordless sudo-t."
+  exit "$RSYNC_FRONTEND_EXIT"
+fi
 
 # Megőrzött fájlok visszaállítása.
 if [[ -f "$TMP_DIR/.env" ]]; then

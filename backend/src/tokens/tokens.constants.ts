@@ -13,3 +13,4 @@ export const TOKEN_ENTRY_TYPE_UPLOAD : string = 'video_upload';
 export const TOKEN_ENTRY_TYPE_SOCIAL_TEXT : string = 'social_text_generate';
 export const TOKEN_ENTRY_TYPE_EXPORT : string = 'video_export';
 export const TOKEN_ENTRY_TYPE_LISTEN : string = 'video_listen';
+export const TOKEN_ENTRY_TYPE_ADMIN_ADJUSTMENT : string = 'admin_adjustment';

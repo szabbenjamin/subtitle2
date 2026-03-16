@@ -1,5 +1,7 @@
 import { Routes } from '@angular/router';
+import { adminEmailGuard } from './guards/admin-email.guard';
 import { authGuard } from './guards/auth.guard';
+import { AdminTokensPage } from './pages/admin-tokens/admin-tokens.page';
 import { ListPage } from './pages/list/list.page';
 import { LoginPage } from './pages/login/login.page';
 import { TokensPage } from './pages/tokens/tokens.page';
@@ -36,6 +38,11 @@ export const routes : Routes = [
     path: 'tokenek',
     component: TokensPage,
     canActivate: [authGuard],
+  },
+  {
+    path: 'admin/tokenek',
+    component: AdminTokensPage,
+    canActivate: [authGuard, adminEmailGuard],
   },
   {
     path: '**',

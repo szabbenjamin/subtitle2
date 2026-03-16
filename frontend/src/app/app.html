@@ -3,12 +3,15 @@
     <header class="main-header">
       <nav>
         <div class="pull-right">
-          @if (isLoggedIn() === true) {
-            <a routerLink="/lista">Lista</a>
-            <a routerLink="/tokenek" class="token-balance">Token: {{ currentTokenBalance() }}</a>
-          } @else {
-            <a routerLink="/login">Login</a>
+        @if (isLoggedIn() === true) {
+          <a routerLink="/lista">Lista</a>
+          <a routerLink="/tokenek" class="token-balance">Token: {{ currentTokenBalance() }}</a>
+          @if (isAdminUser() === true) {
+            <a routerLink="/admin/tokenek">Admin</a>
           }
+        } @else {
+          <a routerLink="/login">Login</a>
+        }
 
           <button type="button" class="icon-btn" (click)="themeService.toggleTheme()" [attr.aria-label]="'Téma váltása: ' + themeService.theme()">
             @if (themeService.theme() === 'light') {

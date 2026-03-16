@@ -16,6 +16,7 @@ export class App {
   public installPromptEvent ?: Event;
   public showInstallBar : boolean = false;
   private readonly installDismissKey : string = 'subtitle2_install_dismissed_at';
+  private readonly adminEmail : string = 'szabbenjamin@gmail.com';
 
   public constructor(
     public readonly authService : AuthService,
@@ -44,6 +45,47 @@ export class App {
       return signalBalance;
     }
     return this.authService.state().profile?.tokenBalance ?? 0;
+  }
+
+  /**
+   * Eldönti, hogy az aktuális felhasználó admin email-e.
+   */
+  public isAdminUser() : boolean {
+    const profileEmail : string | undefined = this.authService.state().profile?.email;
+    if ((profileEmail ?? '').trim().toLowerCase() === this.adminEmail) {
+      return true;
+    }
+
+    const token : string | null = localStorage.getItem('subtitle2_token');
+    if (token === null || token.length === 0) {
+      return false;
+    }
+
+    return this.extractEmailFromJwt(token) === this.adminEmail;
+  }
+
+  /**
+   * JWT payloadból email mező kinyerése.
+   */
+  private extractEmailFromJwt(token : string) : string | null {
+    try {
+      const parts : string[] = token.split('.');
+      if (parts.length < 2) {
+        return null;
+      }
+      const payloadBase64 : string = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      const decodedPayload : string = atob(payloadBase64);
+      const payload : unknown = JSON.parse(decodedPayload);
+      if (typeof payload === 'object' && payload !== null) {
+        const email : unknown = (payload as { email ?: unknown }).email;
+        if (typeof email === 'string' && email.length > 0) {
+          return email.trim().toLowerCase();
+        }
+      }
+    } catch {
+      return null;
+    }
+    return null;
   }
 
   /**

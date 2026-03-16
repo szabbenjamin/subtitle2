@@ -6,6 +6,7 @@ import { TokenHistoryEntity } from './entities/token-history.entity';
 import {
   MONTHLY_BONUS_LIMIT,
   MONTHLY_BONUS_TOKENS,
+  TOKEN_ENTRY_TYPE_ADMIN_ADJUSTMENT,
   TOKEN_ENTRY_TYPE_MONTHLY,
 } from './tokens.constants';
 
@@ -19,6 +20,14 @@ export interface TokenHistoryItem {
   balanceAfter : number;
   type : string;
   description : string;
+  createdAt : Date;
+}
+
+export interface AdminUserTokenItem {
+  id : number;
+  email : string;
+  tokenBalance : number;
+  isEmailVerified : boolean;
   createdAt : Date;
 }
 
@@ -58,6 +67,58 @@ export class TokensService {
       description: row.description,
       createdAt: row.createdAt,
     }));
+  }
+
+  /**
+   * Admin számára az összes user token listája.
+   */
+  public async listUsersForAdmin() : Promise<AdminUserTokenItem[]> {
+    const users : UserEntity[] = await this.usersRepository.find({
+      order: {
+        createdAt: 'DESC',
+      },
+    });
+
+    return users.map((user : UserEntity) => ({
+      id: user.id,
+      email: user.email,
+      tokenBalance: user.tokenBalance,
+      isEmailVerified: user.isEmailVerified,
+      createdAt: user.createdAt,
+    }));
+  }
+
+  /**
+   * Admin egy felhasználó token egyenlegét fix értékre állítja.
+   */
+  public async setUserBalanceByAdmin(userId : number, nextBalance : number, adminEmail : string) : Promise<AdminUserTokenItem> {
+    if (Number.isInteger(nextBalance) === false || nextBalance < 0) {
+      throw new BadRequestException('A token egyenleg csak 0 vagy annál nagyobb egész szám lehet.');
+    }
+
+    const user : UserEntity = await this.requireUser(userId);
+    const previousBalance : number = user.tokenBalance;
+    const delta : number = nextBalance - previousBalance;
+    user.tokenBalance = nextBalance;
+    const savedUser : UserEntity = await this.usersRepository.save(user);
+
+    if (delta !== 0) {
+      await this.createHistoryEntry(
+        savedUser.id,
+        delta,
+        savedUser.tokenBalance,
+        TOKEN_ENTRY_TYPE_ADMIN_ADJUSTMENT,
+        `Admin token korrekció (${adminEmail}): ${previousBalance} -> ${nextBalance}`,
+      );
+    }
+
+    return {
+      id: savedUser.id,
+      email: savedUser.email,
+      tokenBalance: savedUser.tokenBalance,
+      isEmailVerified: savedUser.isEmailVerified,
+      createdAt: savedUser.createdAt,
+    };
   }
 
   /**

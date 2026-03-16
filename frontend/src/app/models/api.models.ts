@@ -78,3 +78,11 @@ export interface TokenHistoryItem {
   description : string;
   createdAt : string;
 }
+
+export interface AdminUserTokenItem {
+  id : number;
+  email : string;
+  tokenBalance : number;
+  isEmailVerified : boolean;
+  createdAt : string;
+}

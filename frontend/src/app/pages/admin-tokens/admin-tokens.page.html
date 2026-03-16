@@ -1,0 +1,47 @@
+<section class="admin-layout">
+  <header>
+    <h1>Admin token kezelés</h1>
+    <p>Ez a felület kizárólag a szabbenjamin@gmail.com felhasználónak érhető el.</p>
+  </header>
+
+  <div class="actions">
+    @if (stateText.length > 0) {
+      <span>{{ stateText }}</span>
+    }
+  </div>
+
+  @if (isLoading === true) {
+    <p class="state">Betöltés...</p>
+  } @else {
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Email</th>
+            <th>Megerősítve</th>
+            <th>Regisztráció</th>
+            <th>Token</th>
+            <th>Művelet</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of rows; track row.id) {
+            <tr>
+              <td>{{ row.id }}</td>
+              <td>{{ row.email }}</td>
+              <td>{{ row.isEmailVerified ? 'Igen' : 'Nem' }}</td>
+              <td>{{ row.createdAt | date:'yyyy.MM.dd HH:mm' }}</td>
+              <td>
+                <input type="number" min="0" step="1" [(ngModel)]="draftBalances[row.id]" />
+              </td>
+              <td>
+                <button type="button" class="save-btn" (click)="save(row)">Mentés</button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</section>

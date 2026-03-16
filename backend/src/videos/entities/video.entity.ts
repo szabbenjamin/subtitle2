@@ -7,6 +7,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { SubtitlePresetEntity } from '../../subtitle-presets/entities/subtitle-preset.entity';
 import { UserEntity } from '../../users/entities/user.entity';
 
 @Entity({ name: 'videos' })
@@ -44,8 +45,26 @@ export class VideoEntity {
   @Column({ type: 'text', default: '' })
   public subtitleText !: string;
 
-  @Column({ type: 'text', default: 'pending' })
+  @Column({ type: 'text', default: 'medium' })
+  public whisperModel !: string;
+
+  @Column({ type: 'text', default: 'hu' })
+  public whisperLanguage !: string;
+
+  @Column({ type: 'integer', default: 7 })
+  public wordsPerLine !: number;
+
+  @Column({ type: 'text', default: 'idle' })
   public processingStatus !: string;
+
+  @Column({ type: 'integer', nullable: true })
+  public subtitlePresetId ?: number | null;
+
+  @ManyToOne(() => SubtitlePresetEntity, {
+    onDelete: 'SET NULL',
+  })
+  @JoinColumn({ name: 'subtitlePresetId' })
+  public subtitlePreset ?: SubtitlePresetEntity | null;
 
   @CreateDateColumn()
   public createdAt !: Date;

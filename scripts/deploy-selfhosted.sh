@@ -3,9 +3,17 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEPLOY_ROOT="${DEPLOY_ROOT:-/var/www/subtitle2}"
+PM2_APP_NAME="${PM2_APP_NAME:-subtitle2-backend}"
 
 mkdir -p "$DEPLOY_ROOT"
 mkdir -p "$DEPLOY_ROOT/backend"
+mkdir -p "$DEPLOY_ROOT/backend/data"
+mkdir -p "$DEPLOY_ROOT/backend/uploads"
+
+if ! command -v pm2 >/dev/null 2>&1; then
+  echo "HIBA: pm2 nincs telepítve vagy nincs PATH-ban."
+  exit 1
+fi
 
 # Megőrzendő lokális fájlok mentése deploy előtt.
 TMP_DIR="$(mktemp -d)"
@@ -32,5 +40,25 @@ if [[ -f "$TMP_DIR/data/subtitle2.sqlite" ]]; then
   mkdir -p "$DEPLOY_ROOT/backend/data"
   cp "$TMP_DIR/data/subtitle2.sqlite" "$DEPLOY_ROOT/backend/data/subtitle2.sqlite"
 fi
+
+cd "$DEPLOY_ROOT/backend"
+npm ci --omit=dev
+
+if [[ ! -f "$DEPLOY_ROOT/backend/dist/main.js" ]]; then
+  echo "HIBA: A backend build hiányzik (dist/main.js)."
+  echo "Ellenőrizd, hogy a CI futtatta-e a 'npm run build' lépést backend mappában."
+  exit 1
+fi
+
+NODE_BIN="$(command -v node)"
+if pm2 describe "$PM2_APP_NAME" >/dev/null 2>&1; then
+  pm2 restart "$PM2_APP_NAME" --update-env
+else
+  pm2 start "$DEPLOY_ROOT/backend/dist/main.js" \
+    --name "$PM2_APP_NAME" \
+    --cwd "$DEPLOY_ROOT/backend" \
+    --interpreter "$NODE_BIN"
+fi
+pm2 save
 
 rm -rf "$TMP_DIR"

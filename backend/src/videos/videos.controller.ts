@@ -12,10 +12,14 @@ import {
   UploadedFile,
   UseGuards,
   UseInterceptors,
+  Res,
+  StreamableFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage, memoryStorage } from 'multer';
+import type { Response } from 'express';
 import { mkdirSync } from 'fs';
+import { createReadStream } from 'fs';
 import { extname } from 'path';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -26,7 +30,9 @@ import { InitUploadDto } from './dto/init-upload.dto';
 import { UpdateHiddenDto } from './dto/update-hidden.dto';
 import { UpdateSubtitleDto } from './dto/update-subtitle.dto';
 import { UploadChunkDto } from './dto/upload-chunk.dto';
-import { InitUploadResponse, VideoDetails, VideoListItem, VideosService } from './videos.service';
+import { UpdateVideoPresetDto } from './dto/update-video-preset.dto';
+import { WhisperSettingsDto } from './dto/whisper-settings.dto';
+import { ExportedVideoFile, InitUploadResponse, VideoDetails, VideoListItem, VideosService } from './videos.service';
 
 @Controller('videos')
 @UseGuards(JwtAuthGuard)
@@ -187,13 +193,70 @@ export class VideosController {
   }
 
   /**
+   * Videóhoz kiválasztott felirat sablon mentése.
+   * @param user Bejelentkezett user.
+   * @param id Videó ID.
+   * @param dto Kiválasztott sablon.
+   * @returns Frissített videó.
+   */
+  @Patch(':id/subtitle-preset')
+  public async updateVideoPreset(
+    @CurrentUser() user : AuthUser,
+    @Param('id', ParseIntPipe) id : number,
+    @Body() dto : UpdateVideoPresetDto,
+  ) : Promise<VideoDetails> {
+    return await this.videosService.updateVideoPreset(user.id, id, dto.presetId);
+  }
+
+  /**
+   * Whisper beállítások mentése.
+   * @param user Bejelentkezett user.
+   * @param id Videó ID.
+   * @param dto Whisper beállítások.
+   * @returns Frissített videó.
+   */
+  @Patch(':id/whisper-settings')
+  public async updateWhisperSettings(
+    @CurrentUser() user : AuthUser,
+    @Param('id', ParseIntPipe) id : number,
+    @Body() dto : WhisperSettingsDto,
+  ) : Promise<VideoDetails> {
+    return await this.videosService.updateWhisperSettings(user.id, id, dto);
+  }
+
+  /**
    * Lehallgatási igény jelölése a háttérfolyamathoz.
    * @param user Bejelentkezett user.
    * @param id Videó ID.
+   * @param dto Whisper paraméterek.
    * @returns Frissített videó.
    */
   @Post(':id/listen-request')
-  public async requestListen(@CurrentUser() user : AuthUser, @Param('id', ParseIntPipe) id : number) : Promise<VideoDetails> {
-    return await this.videosService.requestListen(user.id, id);
+  public async requestListen(
+    @CurrentUser() user : AuthUser,
+    @Param('id', ParseIntPipe) id : number,
+    @Body() dto : WhisperSettingsDto,
+  ) : Promise<VideoDetails> {
+    return await this.videosService.requestListenWithSettings(user.id, id, dto);
+  }
+
+  /**
+   * Felirat beégetése ASS stílussal és letöltés indítása.
+   * @param user Bejelentkezett user.
+   * @param id Videó azonosító.
+   * @param res HTTP válasz a letöltési headerekhez.
+   * @returns Streamelhető videófájl.
+   */
+  @Post(':id/export')
+  public async exportBurnedVideo(
+    @CurrentUser() user : AuthUser,
+    @Param('id', ParseIntPipe) id : number,
+    @Res({ passthrough: true }) res : Response,
+  ) : Promise<StreamableFile> {
+    const exportedFile : ExportedVideoFile = await this.videosService.exportBurnedVideo(user.id, id);
+    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Content-Disposition', `attachment; filename=\"${exportedFile.fileName}\"`);
+    const stream = createReadStream(exportedFile.filePath);
+    return new StreamableFile(stream);
   }
 }

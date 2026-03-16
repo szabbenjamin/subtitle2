@@ -43,6 +43,12 @@
           <strong>{{ video.originalFileName }}</strong>
           <span>Hossz: {{ formatDuration(video.durationSeconds) }}</span>
           <span>Feltöltve: {{ video.createdAt | date:'yyyy.MM.dd HH:mm' }}</span>
+          <span class="processing-line">
+            Állapot: {{ video.processingStatus }}
+            @if (video.processingStatus === 'queued' || video.processingStatus === 'pending') {
+              <span class="inline-loader" aria-hidden="true"></span>
+            }
+          </span>
         </div>
         <div class="actions">
           <button type="button" (click)="toggleHidden(video, true)">Elrejtés</button>
@@ -66,6 +72,12 @@
             <strong>{{ video.originalFileName }}</strong>
             <span>Hossz: {{ formatDuration(video.durationSeconds) }}</span>
             <span>Feltöltve: {{ video.createdAt | date:'yyyy.MM.dd HH:mm' }}</span>
+            <span class="processing-line">
+              Állapot: {{ video.processingStatus }}
+              @if (video.processingStatus === 'queued' || video.processingStatus === 'pending') {
+                <span class="inline-loader" aria-hidden="true"></span>
+              }
+            </span>
           </div>
           <div class="actions">
             <button type="button" (click)="toggleHidden(video, false)">Visszaállítás</button>

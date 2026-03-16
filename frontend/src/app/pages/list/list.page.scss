@@ -64,6 +64,21 @@
   gap: 0.25rem;
 }
 
+.processing-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.inline-loader {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--accent-color) 32%, transparent);
+  border-top-color: var(--accent-color);
+  animation: spin 0.9s linear infinite;
+}
+
 .actions {
   display: flex;
   gap: 0.5rem;
@@ -134,6 +149,12 @@ button.collapse {
 .empty-state {
   margin: 0.4rem 0 0.75rem;
   opacity: 0.8;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media (max-width: 900px) {

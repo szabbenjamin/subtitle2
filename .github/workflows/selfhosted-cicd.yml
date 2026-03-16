@@ -41,4 +41,7 @@ jobs:
         run: npm run build
 
       - name: Deploy
+        env:
+          DEPLOY_ROOT: /var/www/subtitle2
+          PM2_APP_NAME: subtitle2-backend
         run: bash scripts/deploy-selfhosted.sh

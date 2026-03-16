@@ -9,6 +9,17 @@ interface InitUploadResponse {
   totalChunks : number;
 }
 
+interface ChunkUploadContext {
+  file : File;
+  initResponse : InitUploadResponse;
+}
+
+interface ListenRequestPayload {
+  model : string;
+  language : string;
+  wordsPerLine : number;
+}
+
 export class UploadCancelledError extends Error {
   public constructor(message : string = 'A feltöltés megszakításra került.') {
     super(message);
@@ -103,56 +114,23 @@ export class VideoService {
       );
       uploadId = initResponse.uploadId;
 
+      const context : ChunkUploadContext = { file, initResponse };
       for (let chunkIndex : number = 0; chunkIndex < initResponse.totalChunks; chunkIndex += 1) {
         if (cancelState.value === true) {
           throw new UploadCancelledError();
         }
 
-        const start : number = chunkIndex * initResponse.chunkSizeBytes;
-        const end : number = Math.min(file.size, start + initResponse.chunkSizeBytes);
-        const chunkBlob : Blob = file.slice(start, end);
-        const formData : FormData = new FormData();
-        formData.append('chunk', chunkBlob, `${file.name}.part${chunkIndex}`);
-        formData.append('uploadId', initResponse.uploadId);
-        formData.append('chunkIndex', String(chunkIndex));
-        formData.append('totalChunks', String(initResponse.totalChunks));
-
-        await new Promise<void>((resolve : () => void, reject : (error : unknown) => void) => {
-          activeChunkSubscription = this.httpClient
-            .post('/api/videos/upload/chunk', formData, { observe: 'events', reportProgress: true })
-            .pipe(
-              tap((event : HttpEvent<unknown>) => {
-                if (event.type === HttpEventType.UploadProgress) {
-                  const loadedInChunk : number = event.loaded;
-                  const completedBeforeChunk : number = chunkIndex * initResponse.chunkSizeBytes;
-                  const totalLoaded : number = completedBeforeChunk + loadedInChunk;
-                  const percent : number = Math.min(99, Math.round((totalLoaded / Math.max(1, file.size)) * 100));
-                  const status : string = `Feltöltés: ${chunkIndex + 1}/${initResponse.totalChunks} blokk`;
-                  onProgress(percent, status);
-                }
-              }),
-            )
-            .subscribe({
-              next: (event : HttpEvent<unknown>) => {
-                if (event.type === HttpEventType.Response && event instanceof HttpResponse) {
-                  activeChunkSubscription = null;
-                  resolve();
-                }
-              },
-              error: (error : unknown) => {
-                activeChunkSubscription = null;
-                if (cancelState.value === true) {
-                  reject(new UploadCancelledError());
-                  return;
-                }
-                reject(error);
-              },
-            });
+        const uploadedChunkBytes : number = await this.uploadSingleChunk({
+          context,
+          chunkIndex,
+          onProgress,
+          cancelState,
+          setActiveSubscription: (subscription : Subscription | null) => {
+            activeChunkSubscription = subscription;
+          },
         });
-
-        const completedBytes : number = Math.min(file.size, (chunkIndex + 1) * initResponse.chunkSizeBytes);
-        const chunkPercent : number = Math.min(99, Math.round((completedBytes / Math.max(1, file.size)) * 100));
-        onProgress(chunkPercent, `Blokk kész: ${chunkIndex + 1}/${initResponse.totalChunks}`);
+        const chunkPercent : number = Math.min(99, Math.round((uploadedChunkBytes / Math.max(1, file.size)) * 100));
+        onProgress(chunkPercent, 'Feltöltés folyamatban...');
       }
 
       if (cancelState.value === true) {
@@ -196,12 +174,41 @@ export class VideoService {
   }
 
   /**
+   * Videóhoz kiválasztott sablon mentése.
+   * @param id Videó azonosító.
+   * @param presetId Sablon azonosító.
+   * @returns Frissített videó.
+   */
+  public setSubtitlePreset(id : number, presetId : number) : Observable<VideoDetails> {
+    return this.httpClient.patch<VideoDetails>(`/api/videos/${id}/subtitle-preset`, { presetId });
+  }
+
+  /**
    * Lehallgatási igény jelölése.
    * @param id Videó azonosító.
    * @returns Frissített videó.
    */
-  public requestListen(id : number) : Observable<VideoDetails> {
-    return this.httpClient.post<VideoDetails>(`/api/videos/${id}/listen-request`, {});
+  public requestListen(id : number, payload : ListenRequestPayload) : Observable<VideoDetails> {
+    return this.httpClient.post<VideoDetails>(`/api/videos/${id}/listen-request`, payload);
+  }
+
+  /**
+   * Whisper beállítások mentése egy videóhoz.
+   * @param id Videó azonosító.
+   * @param payload Whisper beállítások.
+   * @returns Frissített videó.
+   */
+  public updateWhisperSettings(id : number, payload : ListenRequestPayload) : Observable<VideoDetails> {
+    return this.httpClient.patch<VideoDetails>(`/api/videos/${id}/whisper-settings`, payload);
+  }
+
+  /**
+   * Beégetett feliratos videó exportálása.
+   * @param id Videó azonosító.
+   * @returns Letölthető videó blob.
+   */
+  public exportBurnedVideo(id : number) : Observable<Blob> {
+    return this.httpClient.post(`/api/videos/${id}/export`, {}, { responseType: 'blob' });
   }
 
   /**
@@ -217,5 +224,75 @@ export class VideoService {
         }),
       ),
     );
+  }
+
+  /**
+   * Egy chunk feltöltése progress figyeléssel.
+   * @param params Chunk feltöltési paraméterek.
+   * @returns Eddig feltöltött teljes byteszám.
+   */
+  private async uploadSingleChunk(params : {
+    context : ChunkUploadContext;
+    chunkIndex : number;
+    onProgress : (percent : number, status : string) => void;
+    cancelState : { value : boolean };
+    setActiveSubscription : (subscription : Subscription | null) => void;
+  }) : Promise<number> {
+    const { context, chunkIndex, onProgress, cancelState, setActiveSubscription } = params;
+    const start : number = chunkIndex * context.initResponse.chunkSizeBytes;
+    const end : number = Math.min(context.file.size, start + context.initResponse.chunkSizeBytes);
+    const chunkBlob : Blob = context.file.slice(start, end);
+    const formData : FormData = this.createChunkFormData(context, chunkIndex, chunkBlob);
+
+    await new Promise<void>((resolve : () => void, reject : (error : unknown) => void) => {
+      const subscription : Subscription = this.httpClient
+        .post('/api/videos/upload/chunk', formData, { observe: 'events', reportProgress: true })
+        .pipe(
+          tap((event : HttpEvent<unknown>) => {
+            if (event.type === HttpEventType.UploadProgress) {
+              const loadedInChunk : number = event.loaded;
+              const completedBeforeChunk : number = chunkIndex * context.initResponse.chunkSizeBytes;
+              const totalLoaded : number = completedBeforeChunk + loadedInChunk;
+              const percent : number = Math.min(99, Math.round((totalLoaded / Math.max(1, context.file.size)) * 100));
+              onProgress(percent, 'Feltöltés folyamatban...');
+            }
+          }),
+        )
+        .subscribe({
+          next: (event : HttpEvent<unknown>) => {
+            if (event.type === HttpEventType.Response && event instanceof HttpResponse) {
+              setActiveSubscription(null);
+              resolve();
+            }
+          },
+          error: (error : unknown) => {
+            setActiveSubscription(null);
+            if (cancelState.value === true) {
+              reject(new UploadCancelledError());
+              return;
+            }
+            reject(error);
+          },
+        });
+      setActiveSubscription(subscription);
+    });
+
+    return Math.min(context.file.size, (chunkIndex + 1) * context.initResponse.chunkSizeBytes);
+  }
+
+  /**
+   * FormData létrehozása az aktuális chunk feltöltéséhez.
+   * @param context Feltöltési kontextus.
+   * @param chunkIndex Aktuális chunk index.
+   * @param chunkBlob A chunk bináris adata.
+   * @returns Beküldhető FormData.
+   */
+  private createChunkFormData(context : ChunkUploadContext, chunkIndex : number, chunkBlob : Blob) : FormData {
+    const formData : FormData = new FormData();
+    formData.append('chunk', chunkBlob, `${context.file.name}.part${chunkIndex}`);
+    formData.append('uploadId', context.initResponse.uploadId);
+    formData.append('chunkIndex', String(chunkIndex));
+    formData.append('totalChunks', String(context.initResponse.totalChunks));
+    return formData;
   }
 }

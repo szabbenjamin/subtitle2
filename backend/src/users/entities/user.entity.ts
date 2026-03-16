@@ -6,6 +6,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { SubtitlePresetEntity } from '../../subtitle-presets/entities/subtitle-preset.entity';
 import { VideoEntity } from '../../videos/entities/video.entity';
 
 @Entity({ name: 'users' })
@@ -33,6 +34,9 @@ export class UserEntity {
 
   @OneToMany(() => VideoEntity, (video : VideoEntity) => video.owner)
   public videos !: VideoEntity[];
+
+  @OneToMany(() => SubtitlePresetEntity, (preset : SubtitlePresetEntity) => preset.owner)
+  public subtitlePresets !: SubtitlePresetEntity[];
 
   @CreateDateColumn()
   public createdAt !: Date;

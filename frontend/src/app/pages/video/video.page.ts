@@ -322,6 +322,9 @@ export class VideoPage implements OnInit, OnDestroy {
     if (this.video === undefined) {
       return;
     }
+    if (this.hasSubtitleSource() === false) {
+      return;
+    }
 
     this.isExporting = true;
     this.exportState = 'Exportálás folyamatban...';
@@ -357,6 +360,9 @@ export class VideoPage implements OnInit, OnDestroy {
    */
   public generateSocialText() : void {
     if (this.video === undefined) {
+      return;
+    }
+    if (this.hasSubtitleSource() === false) {
       return;
     }
     this.isGeneratingSocial = true;
@@ -831,5 +837,12 @@ export class VideoPage implements OnInit, OnDestroy {
    */
   private updatePreviewCueForCurrentTime() : void {
     this.previewSubtitleText = this.videoPreviewService.findActiveText(this.previewCues, this.currentPreviewTimeSeconds);
+  }
+
+  /**
+   * Van-e használható (nem üres) szövegkönyv.
+   */
+  public hasSubtitleSource() : boolean {
+    return this.subtitleText.trim().length > 0;
   }
 }

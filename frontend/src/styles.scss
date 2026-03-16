@@ -1,19 +1,23 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&family=Fira+Code:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&family=Fira+Code:wght@400;500&family=Sora:wght@500;600;700&display=swap');
 
 :root {
-  --bg-color: #f4f6f8;
+  --bg-color: #eef3f8;
   --surface-color: #ffffff;
-  --text-color: #12222f;
-  --border-color: #c8d4de;
-  --accent-color: #1166d7;
+  --text-color: #10212f;
+  --border-color: #c4d3df;
+  --accent-color: #0f72de;
+  --accent-strong: #0457b1;
+  --glow-color: rgba(21, 125, 230, 0.24);
 }
 
 :root[data-theme='dark'] {
-  --bg-color: #0e151b;
-  --surface-color: #1a2733;
-  --text-color: #edf5fc;
-  --border-color: #2f475d;
-  --accent-color: #43b9ff;
+  --bg-color: #0d141b;
+  --surface-color: #172430;
+  --text-color: #eaf2fb;
+  --border-color: #2b4358;
+  --accent-color: #41b4ff;
+  --accent-strong: #1c7dca;
+  --glow-color: rgba(62, 175, 255, 0.28);
 }
 
 * {
@@ -27,4 +31,13 @@ body {
   font-family: 'IBM Plex Sans', sans-serif;
   background: var(--bg-color);
   color: var(--text-color);
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: 'Sora', 'IBM Plex Sans', sans-serif;
+  letter-spacing: -0.01em;
 }

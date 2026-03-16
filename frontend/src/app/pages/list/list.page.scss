@@ -4,6 +4,7 @@
   padding: 1.4rem;
   display: grid;
   gap: 1.1rem;
+  animation: list-in 360ms ease-out both;
 }
 
 .topbar {
@@ -39,7 +40,16 @@
   border-radius: 14px;
   padding: 1rem;
   background: color-mix(in srgb, var(--surface-color) 94%, transparent);
-  box-shadow: 0 8px 20px rgba(12, 23, 35, 0.06);
+  box-shadow:
+    0 8px 20px rgba(12, 23, 35, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.panel:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--accent-color) 30%, var(--border-color) 70%);
+  box-shadow: 0 14px 30px rgba(12, 23, 35, 0.11);
 }
 
 .panel h2 {
@@ -53,6 +63,16 @@
   gap: 1rem;
   border-top: 1px solid color-mix(in srgb, var(--border-color) 78%, transparent);
   padding: 0.78rem 0;
+  transition: background 160ms ease, transform 160ms ease;
+}
+
+.row:hover {
+  transform: translateX(3px);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent-color) 6%, transparent),
+    transparent 65%
+  );
 }
 
 .row:first-of-type {
@@ -137,6 +157,7 @@ button.accent {
   background: linear-gradient(135deg, #0e73da, #2d9af7);
   color: #ffffff;
   border: 0;
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--accent-color) 36%, transparent);
 }
 
 button.collapse {
@@ -161,6 +182,17 @@ button.collapse {
 .empty-state {
   margin: 0.4rem 0 0.75rem;
   opacity: 0.8;
+}
+
+@keyframes list-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes spin {

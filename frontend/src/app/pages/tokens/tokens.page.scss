@@ -4,6 +4,7 @@
   padding: 1.4rem;
   display: grid;
   gap: 1rem;
+  animation: tokens-in 340ms ease-out both;
 }
 
 header h1 {
@@ -21,6 +22,12 @@ header p {
   border-radius: 14px;
   background: color-mix(in srgb, var(--surface-color) 94%, transparent);
   box-shadow: 0 8px 20px rgba(12, 23, 35, 0.06);
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+
+.table-wrap:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 28px rgba(12, 23, 35, 0.12);
 }
 
 table {
@@ -37,6 +44,7 @@ td {
 
 thead th {
   font-weight: 700;
+  background: color-mix(in srgb, var(--accent-color) 7%, var(--surface-color) 93%);
 }
 
 .plus {
@@ -65,4 +73,15 @@ thead th {
 .costs-block h2 {
   margin: 0;
   font-size: 1.05rem;
+}
+
+@keyframes tokens-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

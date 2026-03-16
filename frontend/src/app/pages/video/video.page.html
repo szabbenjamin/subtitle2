@@ -215,7 +215,7 @@
         }
       }
 
-      <button type="button" class="export-btn" [disabled]="isExporting" (click)="onExport()">
+      <button type="button" class="export-btn" [disabled]="isExporting || hasSubtitleSource() === false" (click)="onExport()">
         @if (isExporting === true) {
           Exportálás...
         } @else {
@@ -234,7 +234,7 @@
           A jelenlegi szövegkönyvből készít egy címet és hashtag listát. Az eredmény letölthető `.txt` fájlban.
         </p>
         <div class="social-actions">
-          <button type="button" (click)="generateSocialText()" [disabled]="isGeneratingSocial">
+          <button type="button" (click)="generateSocialText()" [disabled]="isGeneratingSocial || hasSubtitleSource() === false">
             @if (isGeneratingSocial === true) {
               Generálás...
             } @else {

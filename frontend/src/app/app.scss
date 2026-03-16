@@ -4,6 +4,7 @@
 }
 
 .app-shell {
+  position: relative;
   min-height: 100vh;
   background:
     radial-gradient(circle at 8% 6%, rgba(37, 136, 229, 0.18), transparent 40%),
@@ -11,6 +12,19 @@
     radial-gradient(circle at 26% 88%, rgba(255, 126, 64, 0.08), transparent 30%),
     var(--bg-color);
   color: var(--text-color);
+}
+
+.app-shell::before {
+  content: '';
+  position: fixed;
+  inset: -30vmax;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 18% 22%, color-mix(in srgb, var(--accent-color) 20%, transparent), transparent 40%),
+    radial-gradient(circle at 84% 72%, color-mix(in srgb, #4ac8df 18%, transparent), transparent 34%);
+  filter: blur(44px);
+  opacity: 0.7;
+  animation: drift 16s ease-in-out infinite alternate;
 }
 
 .main-header {
@@ -23,9 +37,11 @@
   gap: 1rem;
   padding: 0.95rem 1.25rem;
   border-bottom: 1px solid color-mix(in srgb, var(--border-color) 88%, #8bc9f0 12%);
-  background: color-mix(in srgb, var(--bg-color) 84%, transparent);
-  backdrop-filter: blur(10px);
-  box-shadow: 0 8px 24px rgba(12, 22, 34, 0.08);
+  background: color-mix(in srgb, var(--bg-color) 72%, transparent);
+  backdrop-filter: blur(14px);
+  box-shadow:
+    0 10px 30px rgba(12, 22, 34, 0.1),
+    inset 0 -1px 0 color-mix(in srgb, var(--border-color) 76%, transparent);
 }
 
 .brand {
@@ -74,13 +90,37 @@ button {
   font-weight: 500;
   font: inherit;
   line-height: 1;
-  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease;
 }
 
 a:hover,
 button:hover {
-  transform: translateY(-1px);
+  transform: translateY(-1px) scale(1.01);
   border-color: color-mix(in srgb, var(--accent-color) 38%, var(--border-color) 62%);
+  box-shadow: 0 8px 18px rgba(10, 28, 45, 0.12);
+}
+
+a::after,
+button::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent, color-mix(in srgb, #ffffff 42%, transparent), transparent);
+  transform: translateX(-120%);
+  transition: transform 320ms ease;
+  z-index: -1;
+}
+
+a:hover::after,
+button:hover::after {
+  transform: translateX(120%);
 }
 
 .icon-btn {
@@ -114,7 +154,7 @@ button:hover {
 }
 
 .logout-btn {
-  background: color-mix(in srgb, #d45555 12%, var(--surface-color) 88%);
+  background: linear-gradient(145deg, color-mix(in srgb, #d45555 16%, var(--surface-color) 84%), var(--surface-color));
 }
 
 .install-bar {
@@ -129,12 +169,23 @@ button:hover {
   border: 1px solid var(--border-color);
   border-radius: 14px;
   padding: 0.65rem 0.9rem;
-  background: var(--surface-color);
+  background: color-mix(in srgb, var(--surface-color) 90%, transparent);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 12px 30px rgba(9, 20, 31, 0.2);
 }
 
 .install-bar div {
   display: flex;
   gap: 0.5rem;
+}
+
+@keyframes drift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  100% {
+    transform: translate3d(2%, -2%, 0) scale(1.06);
+  }
 }
 
 @media (max-width: 760px) {

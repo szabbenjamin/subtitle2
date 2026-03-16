@@ -46,9 +46,16 @@ run_user_shell() {
   run_as_target_user bash -lc "
     export HOME='$TARGET_HOME'
     export NVM_DIR=\"\$HOME/.nvm\"
-    if [[ -s \"\$NVM_DIR/nvm.sh\" ]]; then
-      source \"\$NVM_DIR/nvm.sh\"
-      nvm use 24 >/dev/null 2>&1 || true
+    if [[ ! -s \"\$NVM_DIR/nvm.sh\" ]]; then
+      echo 'HIBA: nvm nincs telepítve a cél usernél (\$NVM_DIR/nvm.sh hiányzik).'
+      exit 1
+    fi
+    source \"\$NVM_DIR/nvm.sh\"
+    nvm use 24 >/dev/null
+    NODE_MAJOR=\"\$(node -v | sed -E 's/^v([0-9]+).*/\\1/')\"
+    if [[ \"\$NODE_MAJOR\" != \"24\" ]]; then
+      echo \"HIBA: Kötelező Node 24, aktuális: \$(node -v)\"
+      exit 1
     fi
     $*
   "

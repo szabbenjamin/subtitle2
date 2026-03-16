@@ -24,6 +24,12 @@ jobs:
             frontend/package-lock.json
             backend/package-lock.json
 
+      - name: Verify Node Version
+        run: |
+          node -v
+          npm -v
+          test "$(node -p 'process.versions.node.split(`.`)[0]')" = "24"
+
       - name: Install frontend deps
         working-directory: frontend
         run: npm ci

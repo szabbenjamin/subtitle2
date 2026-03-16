@@ -112,3 +112,9 @@ Alapértelmezés: bekapcsolt (`true` viselkedés, ha nincs megadva).
 
 Részletes leírás:
 - [docs/cicd-pm2-telepites.md](/home/winben/subtitle2/docs/cicd-pm2-telepites.md)
+
+Gyors telepítő (self-hosted runner + deploy környezet):
+
+```bash
+bash scripts/install-selfhosted.sh
+```

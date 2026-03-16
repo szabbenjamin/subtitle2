@@ -42,6 +42,7 @@ jobs:
 
       - name: Deploy
         env:
-          DEPLOY_ROOT: /var/www/subtitle2
-          PM2_APP_NAME: subtitle2-backend
+          BACKEND_DEPLOY_ROOT: /var/www/winben
+          FRONTEND_WEB_ROOT: /var/www/html
+          PM2_APP_NAME: winben
         run: bash scripts/deploy-selfhosted.sh

@@ -4,6 +4,7 @@ import { Component, OnInit } from '@angular/core';
 import { AbstractControl, FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { finalize } from 'rxjs';
+import { AlertModalService } from '../../services/alert-modal.service';
 import { AuthService } from '../../services/auth.service';
 
 type LoginModal = 'none' | 'login' | 'register' | 'forgot' | 'reset';
@@ -30,6 +31,7 @@ export class LoginPage implements OnInit {
   public constructor(
     private readonly formBuilder : FormBuilder,
     private readonly authService : AuthService,
+    private readonly alertModalService : AlertModalService,
     private readonly router : Router,
     private readonly activatedRoute : ActivatedRoute,
   ) {
@@ -259,7 +261,7 @@ export class LoginPage implements OnInit {
   }
 
   /**
-   * Egységes API hiba kezelés: kiírás + alert fallback.
+   * Egységes API hiba kezelés: kiírás + globális alert modal.
    * @param error Hibaobjektum.
    * @param fallback Alapértelmezett hibaüzenet.
    * @returns Nem ad vissza értéket.
@@ -270,7 +272,7 @@ export class LoginPage implements OnInit {
     this.errorMessage = this.extractErrorMessage(error, fallback);
 
     if (this.errorMessage.length > 0) {
-      window.alert(this.errorMessage);
+      this.alertModalService.open(this.errorMessage, 'Hiba');
     }
   }
 

@@ -125,6 +125,20 @@ textarea {
   font-family: 'Fira Code', monospace;
 }
 
+.page-error {
+  margin: 0 0 0.2rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, #cf3f3f 45%, var(--border-color) 55%);
+  background: color-mix(in srgb, #cf3f3f 10%, var(--surface-color) 90%);
+  color: #c73939;
+  font-size: 0.92rem;
+}
+
+.page-error-global {
+  grid-column: 1 / -1;
+}
+
 button {
   margin-top: 0.8rem;
   border-radius: 10px;

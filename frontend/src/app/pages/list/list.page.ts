@@ -4,6 +4,7 @@ import { ChangeDetectorRef, Component, ElementRef, OnDestroy, OnInit, ViewChild 
 import { Router, RouterLink } from '@angular/router';
 import { forkJoin } from 'rxjs';
 import { VideoDetails, VideoListItem } from '../../models/api.models';
+import { AlertModalService } from '../../services/alert-modal.service';
 import { TokenService } from '../../services/token.service';
 import { ChunkUploadHandle, UploadCancelledError, VideoService } from '../../services/video.service';
 
@@ -31,6 +32,7 @@ export class ListPage implements OnInit, OnDestroy {
 
   public constructor(
     private readonly videoService : VideoService,
+    private readonly alertModalService : AlertModalService,
     private readonly tokenService : TokenService,
     private readonly router : Router,
     private readonly changeDetectorRef : ChangeDetectorRef,
@@ -117,7 +119,7 @@ export class ListPage implements OnInit, OnDestroy {
         } else {
           this.finishUpload('Feltöltési hiba');
           this.errorMessage = this.extractErrorMessage(error);
-          window.alert(this.errorMessage);
+          this.alertModalService.open(this.errorMessage, 'Hiba');
           this.changeDetectorRef.detectChanges();
         }
       });

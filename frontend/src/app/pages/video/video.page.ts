@@ -5,6 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { Subject, Subscription, debounceTime, distinctUntilChanged, map } from 'rxjs';
 import { SocialTextResult, SubtitlePreset, VideoDetails } from '../../models/api.models';
+import { AlertModalService } from '../../services/alert-modal.service';
 import { SubtitlePresetService, UpdateSubtitlePresetPayload } from '../../services/subtitle-preset.service';
 import { TokenService } from '../../services/token.service';
 import { VideoService } from '../../services/video.service';
@@ -93,6 +94,7 @@ export class VideoPage implements OnInit, OnDestroy {
   public constructor(
     private readonly activatedRoute : ActivatedRoute,
     private readonly videoService : VideoService,
+    private readonly alertModalService : AlertModalService,
     private readonly subtitlePresetService : SubtitlePresetService,
     private readonly tokenService : TokenService,
     private readonly videoPreviewService : VideoPreviewService,
@@ -194,8 +196,8 @@ export class VideoPage implements OnInit, OnDestroy {
         },
         error: (error : unknown) => {
           this.listenRequestState = '';
-          this.errorMessage = this.extractErrorMessage(error);
-          window.alert(this.errorMessage);
+          this.errorMessage = this.extractErrorMessage(error, 'A lehallgatás jelölése sikertelen.');
+          this.alertModalService.open(this.errorMessage, 'Hiba');
           this.changeDetectorRef.detectChanges();
         },
       });
@@ -345,11 +347,7 @@ export class VideoPage implements OnInit, OnDestroy {
         this.changeDetectorRef.detectChanges();
       },
       error: (error : unknown) => {
-        this.isExporting = false;
-        this.exportState = '';
-        this.errorMessage = this.extractErrorMessage(error);
-        window.alert(this.errorMessage);
-        this.changeDetectorRef.detectChanges();
+        void this.handleExportError(error);
       },
     });
   }
@@ -380,8 +378,8 @@ export class VideoPage implements OnInit, OnDestroy {
       error: (error : unknown) => {
         this.isGeneratingSocial = false;
         this.socialState = '';
-        this.errorMessage = this.extractErrorMessage(error);
-        window.alert(this.errorMessage);
+        this.errorMessage = this.extractErrorMessage(error, 'A cím + hashtag generálás sikertelen.');
+        this.alertModalService.open(this.errorMessage, 'Hiba');
         this.changeDetectorRef.detectChanges();
       },
     });
@@ -533,7 +531,7 @@ export class VideoPage implements OnInit, OnDestroy {
       },
       error: (error : unknown) => {
         this.isLoading = false;
-        this.errorMessage = this.extractErrorMessage(error);
+        this.errorMessage = this.extractErrorMessage(error, 'Nem sikerült betölteni a videó oldalát.');
         this.changeDetectorRef.detectChanges();
       },
     });
@@ -800,17 +798,11 @@ export class VideoPage implements OnInit, OnDestroy {
    * @param error Hiba objektum.
    * @returns Megjeleníthető hibaüzenet.
    */
-  private extractErrorMessage(error : unknown) : string {
+  private extractErrorMessage(error : unknown, fallback : string = 'A művelet sikertelen.') : string {
     if (error instanceof HttpErrorResponse) {
-      const payload : unknown = error.error;
-      if (typeof payload === 'object' && payload !== null) {
-        const message : unknown = (payload as { message ?: unknown }).message;
-        if (typeof message === 'string' && message.length > 0) {
-          return message;
-        }
-      }
-      if (typeof payload === 'string' && payload.length > 0) {
-        return payload;
+      const parsedMessage : string | null = this.parseMessageFromPayload(error.error);
+      if (parsedMessage !== null) {
+        return parsedMessage;
       }
       if (error.status === 401) {
         return 'Lejárt bejelentkezés. Jelentkezz be újra.';
@@ -818,8 +810,105 @@ export class VideoPage implements OnInit, OnDestroy {
       if (error.status === 404) {
         return 'A videó nem található vagy nincs hozzáférésed.';
       }
+
+      if (Number.isFinite(error.status) && error.status > 0) {
+        return `${fallback} (HTTP ${error.status})`;
+      }
     }
-    return 'Nem sikerült betölteni a videó oldalát.';
+    return fallback;
+  }
+
+  /**
+   * Export hiba kezelése aszinkron hibaüzenet-feldolgozással (blob támogatás).
+   * @param error Hiba objektum.
+   */
+  private async handleExportError(error : unknown) : Promise<void> {
+    this.isExporting = false;
+    this.exportState = '';
+    this.errorMessage = await this.extractErrorMessageAsync(error, 'Az exportálás sikertelen.');
+    this.alertModalService.open(this.errorMessage, 'Hiba');
+    this.changeDetectorRef.detectChanges();
+  }
+
+  /**
+   * Aszinkron hibaüzenet-kivonat, blob payload támogatással.
+   * @param error Hiba objektum.
+   * @param fallback Alapértelmezett üzenet.
+   */
+  private async extractErrorMessageAsync(error : unknown, fallback : string) : Promise<string> {
+    if (error instanceof HttpErrorResponse) {
+      const parsedMessage : string | null = await this.parseMessageFromPayloadAsync(error.error);
+      if (parsedMessage !== null) {
+        return parsedMessage;
+      }
+      if (Number.isFinite(error.status) && error.status > 0) {
+        return `${fallback} (HTTP ${error.status})`;
+      }
+    }
+    return fallback;
+  }
+
+  /**
+   * Rekurzív hibaüzenet-feldolgozás szinkron payloadokra.
+   * @param payload HTTP payload.
+   */
+  private parseMessageFromPayload(payload : unknown) : string | null {
+    if (typeof payload === 'string' && payload.length > 0) {
+      const trimmed : string = payload.trim();
+      const looksLikeJson : boolean =
+        (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+        (trimmed.startsWith('[') && trimmed.endsWith(']'));
+
+      if (looksLikeJson === true) {
+        try {
+          return this.parseMessageFromPayload(JSON.parse(trimmed));
+        } catch {
+          return payload;
+        }
+      }
+
+      return payload;
+    }
+
+    if (Array.isArray(payload) === true && payload.length > 0) {
+      const parts : string[] = payload
+        .map((item : unknown) => this.parseMessageFromPayload(item))
+        .filter((item : string | null) : item is string => item !== null && item.length > 0);
+      if (parts.length > 0) {
+        return parts.join(', ');
+      }
+    }
+
+    if (typeof payload === 'object' && payload !== null) {
+      const record : Record<string, unknown> = payload as Record<string, unknown>;
+      const directMessage : string | null = this.parseMessageFromPayload(record['message']);
+      if (directMessage !== null) {
+        return directMessage;
+      }
+      const nestedError : string | null = this.parseMessageFromPayload(record['error']);
+      if (nestedError !== null) {
+        return nestedError;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Rekurzív hibaüzenet-feldolgozás blob payload támogatással.
+   * @param payload HTTP payload.
+   */
+  private async parseMessageFromPayloadAsync(payload : unknown) : Promise<string | null> {
+    if (payload instanceof Blob) {
+      try {
+        const text : string = await payload.text();
+        return this.parseMessageFromPayload(text);
+      } catch {
+        return null;
+      }
+    }
+
+    return this.parseMessageFromPayload(payload);
   }
 
   /**

@@ -14,6 +14,15 @@
   color: var(--text-color);
 }
 
+.app-shell.modal-open {
+  overflow: hidden;
+  height: 100vh;
+}
+
+.app-content {
+  min-height: 100vh;
+}
+
 .app-shell::before {
   content: '';
   position: fixed;
@@ -179,12 +188,69 @@ button:hover::after {
   gap: 0.5rem;
 }
 
+.global-alert-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(8, 15, 23, 0.58);
+  backdrop-filter: blur(6px);
+  animation: fade-in 180ms ease both;
+}
+
+.global-alert-modal {
+  width: min(92vw, 480px);
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 80%, #8cc8ee 20%);
+  padding: 1rem 1rem 0.95rem;
+  background: color-mix(in srgb, var(--surface-color) 94%, transparent);
+  box-shadow: 0 20px 44px rgba(6, 14, 22, 0.35);
+  animation: modal-up 220ms ease both;
+}
+
+.global-alert-modal h3 {
+  margin: 0;
+  font-size: 1.08rem;
+}
+
+.global-alert-modal p {
+  margin: 0.6rem 0 0.9rem;
+  line-height: 1.48;
+  opacity: 0.92;
+}
+
+.global-alert-modal button {
+  min-width: 90px;
+}
+
 @keyframes drift {
   0% {
     transform: translate3d(0, 0, 0) scale(1);
   }
   100% {
     transform: translate3d(2%, -2%, 0) scale(1.06);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modal-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }
 

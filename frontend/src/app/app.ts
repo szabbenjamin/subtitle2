@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { Component } from '@angular/core';
 import { Router, RouterLink, RouterOutlet } from '@angular/router';
+import { AlertModalService } from './services/alert-modal.service';
 import { AuthService } from './services/auth.service';
 import { TokenService } from './services/token.service';
 import { ThemeService } from './services/theme.service';
@@ -18,6 +19,7 @@ export class App {
 
   public constructor(
     public readonly authService : AuthService,
+    public readonly alertModalService : AlertModalService,
     public readonly tokenService : TokenService,
     public readonly themeService : ThemeService,
     private readonly router : Router,
@@ -83,6 +85,13 @@ export class App {
   public dismissInstallBar() : void {
     localStorage.setItem(this.installDismissKey, String(Date.now()));
     this.showInstallBar = false;
+  }
+
+  /**
+   * Globális alert modal bezárása.
+   */
+  public closeAlertModal() : void {
+    this.alertModalService.close();
   }
 
   /**

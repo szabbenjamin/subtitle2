@@ -2,12 +2,16 @@
   <section class="video-state">
     <p>Videó betöltése...</p>
   </section>
-} @else if (errorMessage.length > 0) {
+} @else if (video === undefined) {
   <section class="video-state error">
-    <p>{{ errorMessage }}</p>
+    <p>{{ errorMessage.length > 0 ? errorMessage : 'Nem sikerült betölteni a videó oldalát.' }}</p>
   </section>
 } @else if (video !== undefined) {
   <section class="video-layout">
+    @if (errorMessage.length > 0) {
+      <p class="page-error page-error-global">{{ errorMessage }}</p>
+    }
+
     <aside class="left">
       <div class="video-preview-wrap">
         <video

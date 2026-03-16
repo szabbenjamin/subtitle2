@@ -1,38 +1,50 @@
-<div class="app-shell">
-  <header class="main-header">
-    <nav>
-      <div class="pull-right">
-        @if (isLoggedIn() === true) {
-          <a routerLink="/lista">Lista</a>
-          <a routerLink="/tokenek" class="token-balance">Token: {{ currentTokenBalance() }}</a>
-        } @else {
-          <a routerLink="/login">Login</a>
-        }
-
-        <button type="button" class="icon-btn" (click)="themeService.toggleTheme()" [attr.aria-label]="'Téma váltása: ' + themeService.theme()">
-          @if (themeService.theme() === 'light') {
-            <span class="icon-sun" aria-hidden="true"></span>
+<div class="app-shell" [class.modal-open]="alertModalService.state().isOpen === true">
+  <div class="app-content" [attr.inert]="alertModalService.state().isOpen === true ? '' : null">
+    <header class="main-header">
+      <nav>
+        <div class="pull-right">
+          @if (isLoggedIn() === true) {
+            <a routerLink="/lista">Lista</a>
+            <a routerLink="/tokenek" class="token-balance">Token: {{ currentTokenBalance() }}</a>
           } @else {
-            <span class="icon-moon" aria-hidden="true"></span>
+            <a routerLink="/login">Login</a>
           }
-        </button>
 
-        @if (isLoggedIn() === true) {
-          <button type="button" class="logout-btn" (click)="logout()">Kilépés</button>
-        }
+          <button type="button" class="icon-btn" (click)="themeService.toggleTheme()" [attr.aria-label]="'Téma váltása: ' + themeService.theme()">
+            @if (themeService.theme() === 'light') {
+              <span class="icon-sun" aria-hidden="true"></span>
+            } @else {
+              <span class="icon-moon" aria-hidden="true"></span>
+            }
+          </button>
+
+          @if (isLoggedIn() === true) {
+            <button type="button" class="logout-btn" (click)="logout()">Kilépés</button>
+          }
+        </div>
+      </nav>
+    </header>
+
+    <router-outlet></router-outlet>
+
+    @if (showInstallBar === true) {
+      <div class="install-bar">
+        <span>Telepítsd a subtitle2 PWA-t gyors eléréshez.</span>
+        <div>
+          <button type="button" (click)="triggerInstall()">Telepítés</button>
+          <button type="button" (click)="dismissInstallBar()">X</button>
+        </div>
       </div>
-    </nav>
-  </header>
+    }
+  </div>
 
-  <router-outlet></router-outlet>
-
-  @if (showInstallBar === true) {
-    <div class="install-bar">
-      <span>Telepítsd a subtitle2 PWA-t gyors eléréshez.</span>
-      <div>
-        <button type="button" (click)="triggerInstall()">Telepítés</button>
-        <button type="button" (click)="dismissInstallBar()">X</button>
-      </div>
+  @if (alertModalService.state().isOpen === true) {
+    <div class="global-alert-backdrop">
+      <section class="global-alert-modal" role="alertdialog" aria-modal="true">
+        <h3>{{ alertModalService.state().title }}</h3>
+        <p>{{ alertModalService.state().message }}</p>
+        <button type="button" (click)="closeAlertModal()">OK</button>
+      </section>
     </div>
   }
 </div>

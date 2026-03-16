@@ -87,10 +87,27 @@
           </div>
           <div class="actions">
             <button type="button" (click)="toggleHidden(video, false)">Visszaállítás</button>
+            <button type="button" class="danger" (click)="openDeleteConfirm(video)">Törlés</button>
             <button type="button" class="accent" [routerLink]="['/video', video.id]">Megnyitás</button>
           </div>
         </article>
       }
     }
   </section>
+
+  @if (confirmDeleteVideo !== undefined) {
+    <div class="confirm-backdrop">
+      <section class="confirm-modal" role="dialog" aria-modal="true">
+        <h3>Videó törlése</h3>
+        <p>
+          Biztosan törölni szeretnéd ezt a fájlt?
+          <strong>{{ confirmDeleteVideo.originalFileName }}</strong>
+        </p>
+        <div class="confirm-actions">
+          <button type="button" class="danger" (click)="confirmDeleteVideoNow()">Igen, törlöm</button>
+          <button type="button" (click)="closeDeleteConfirm()">Mégse</button>
+        </div>
+      </section>
+    </div>
+  }
 </section>

@@ -28,6 +28,7 @@ export class ListPage implements OnInit, OnDestroy {
   public hiddenOpen : boolean = false;
   public isLoadingLists : boolean = false;
   public errorMessage : string = '';
+  public confirmDeleteVideo ?: VideoListItem;
   private readonly allowedMediaExtensions : ReadonlySet<string> = new Set<string>([
     '.mp4',
     '.mov',
@@ -179,6 +180,43 @@ export class ListPage implements OnInit, OnDestroy {
     this.videoService.setHidden(video.id, hidden).subscribe({
       next: () => {
         this.reloadLists();
+      },
+    });
+  }
+
+  /**
+   * Törlési megerősítő modal megnyitása.
+   */
+  public openDeleteConfirm(video : VideoListItem) : void {
+    this.confirmDeleteVideo = video;
+  }
+
+  /**
+   * Törlési megerősítő modal bezárása.
+   */
+  public closeDeleteConfirm() : void {
+    this.confirmDeleteVideo = undefined;
+  }
+
+  /**
+   * Rejtett videó végleges törlése.
+   */
+  public confirmDeleteVideoNow() : void {
+    const target : VideoListItem | undefined = this.confirmDeleteVideo;
+    if (target === undefined) {
+      return;
+    }
+
+    this.videoService.remove(target.id).subscribe({
+      next: () => {
+        this.closeDeleteConfirm();
+        this.reloadLists();
+      },
+      error: (error : unknown) => {
+        this.closeDeleteConfirm();
+        this.errorMessage = this.extractErrorMessage(error);
+        this.alertModalService.open(this.errorMessage, 'Hiba');
+        this.changeDetectorRef.detectChanges();
       },
     });
   }

@@ -17,8 +17,10 @@ Ez telepíti/ellenőrzi:
 - `pm2`
 - `rsync`
 - deploy könyvtárak:
-  - backend: `/var/www/winben`
+  - backend: `/home/winben/subtitle2`
   - frontend webroot: `/var/www/html`
+- PM2 app név: `subtitle2`
+- futtatási user: `winben`
 
 Opcionálisan a GitHub runner konfiguráció is automatizálható:
 
@@ -48,13 +50,13 @@ sudo apt-get install -y rsync
 
 ## 3. Backend környezet előkészítése
 
-A deploy backend célmappa: `/var/www/winben`.
+A deploy backend célmappa: `/home/winben/subtitle2`.
 
 Hozd létre és állítsd be a backend `.env` fájlt:
 
 ```bash
-mkdir -p /var/www/winben/backend
-nano /var/www/winben/backend/.env
+mkdir -p /home/winben/subtitle2/backend
+nano /home/winben/subtitle2/backend/.env
 ```
 
 Minimum ajánlott tartalom:
@@ -83,11 +85,11 @@ Lépések:
 
 A deploy script:
 
-- rsync-kel tükrözi a projektet a `BACKEND_DEPLOY_ROOT` alá (`/var/www/winben`)
+- rsync-kel tükrözi a projektet a `BACKEND_DEPLOY_ROOT` alá (`/home/winben/subtitle2`)
 - frontend buildet a `FRONTEND_WEB_ROOT` alá másolja (`/var/www/html`)
 - megőrzi a backend `backend/.env` és `backend/data/subtitle2.sqlite` fájlokat
-- backendben futtat `npm ci --omit=dev`
-- PM2-vel indítja/újraindítja a szolgáltatást (`PM2_APP_NAME`, default: `winben`)
+- backendben futtat `npm ci --omit=dev` (a `winben` user nevében)
+- PM2-vel indítja/újraindítja a szolgáltatást (`PM2_APP_NAME`, default: `subtitle2`)
 - `pm2 save`-ot hív
 
 ## 5. PM2 tartós indulás (boot után is)
@@ -104,7 +106,7 @@ pm2 save
 
 ```bash
 pm2 list
-pm2 logs winben --lines 100
+pm2 logs subtitle2 --lines 100
 curl -I http://127.0.0.1:3000/api/auth/me
 ls -la /var/www/html
 ```

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseBoolPipe,
@@ -67,6 +68,17 @@ export class VideosController {
   @Get(':id')
   public async getById(@CurrentUser() user : AuthUser, @Param('id', ParseIntPipe) id : number) : Promise<VideoDetails> {
     return await this.videosService.getById(user.id, id);
+  }
+
+  /**
+   * Videó törlése (adatbázis + feltöltött fájl).
+   * @param user Bejelentkezett user.
+   * @param id Videó ID.
+   * @returns Siker jelzés.
+   */
+  @Delete(':id')
+  public async remove(@CurrentUser() user : AuthUser, @Param('id', ParseIntPipe) id : number) : Promise<{ success : boolean }> {
+    return await this.videosService.remove(user.id, id);
   }
 
   /**

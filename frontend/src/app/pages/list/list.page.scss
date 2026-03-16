@@ -160,6 +160,12 @@ button.accent {
   box-shadow: 0 10px 22px color-mix(in srgb, var(--accent-color) 36%, transparent);
 }
 
+button.danger {
+  background: linear-gradient(135deg, #c73c3c, #a92d2d);
+  color: #ffffff;
+  border: 0;
+}
+
 button.collapse {
   width: 100%;
   text-align: left;
@@ -182,6 +188,42 @@ button.collapse {
 .empty-state {
   margin: 0.4rem 0 0.75rem;
   opacity: 0.8;
+}
+
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(7, 13, 20, 0.58);
+  backdrop-filter: blur(6px);
+}
+
+.confirm-modal {
+  width: min(92vw, 460px);
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 80%, #8ac8ed 20%);
+  padding: 0.95rem;
+  background: color-mix(in srgb, var(--surface-color) 94%, transparent);
+  box-shadow: 0 18px 42px rgba(7, 16, 25, 0.3);
+}
+
+.confirm-modal h3 {
+  margin: 0;
+}
+
+.confirm-modal p {
+  margin: 0.6rem 0 0;
+  line-height: 1.45;
+}
+
+.confirm-actions {
+  margin-top: 0.85rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.55rem;
 }
 
 @keyframes list-in {

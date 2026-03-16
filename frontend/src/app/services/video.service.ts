@@ -165,6 +165,15 @@ export class VideoService {
   }
 
   /**
+   * Videó törlése.
+   * @param id Videó azonosító.
+   * @returns Siker jelzés.
+   */
+  public remove(id : number) : Observable<{ success : boolean }> {
+    return this.httpClient.delete<{ success : boolean }>(`/api/videos/${id}`);
+  }
+
+  /**
    * Felirat mentése.
    * @param id Videó azonosító.
    * @param subtitleText Mentendő feliratszöveg.

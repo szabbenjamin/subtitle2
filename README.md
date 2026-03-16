@@ -118,3 +118,9 @@ Gyors telepítő (self-hosted runner + deploy környezet):
 ```bash
 bash scripts/install-selfhosted.sh
 ```
+
+Alapértelmezések:
+- deploy user: `winben`
+- backend deploy root: `/home/winben/subtitle2`
+- frontend web root: `/var/www/html`
+- PM2 app név: `subtitle2`

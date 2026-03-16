@@ -281,6 +281,22 @@ export class VideosService {
   }
 
   /**
+   * Videó törlése: DB rekord + fizikai fájl eltávolítása.
+   * @param ownerId User azonosító.
+   * @param videoId Videó azonosító.
+   * @returns Siker jelzés.
+   */
+  public async remove(ownerId : number, videoId : number) : Promise<{ success : boolean }> {
+    const video : VideoEntity = await this.requireOwnedVideo(ownerId, videoId);
+    const mediaPath : string = join(this.uploadsDir, video.storageFileName);
+
+    await this.videosRepository.remove(video);
+    await rm(mediaPath, { force: true });
+
+    return { success: true };
+  }
+
+  /**
    * Átállítja a videó rejtett állapotát.
    * @param ownerId User azonosító.
    * @param videoId Videó azonosító.

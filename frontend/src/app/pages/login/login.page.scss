@@ -185,6 +185,7 @@ button {
   border: 1px solid color-mix(in srgb, var(--border-color) 88%, #7bd2f9 12%);
   border-radius: 18px;
   padding: 1.1rem;
+  padding-top: 2.9rem;
   position: relative;
   background:
     linear-gradient(165deg, color-mix(in srgb, var(--surface-color) 93%, #ffffff 7%), var(--surface-color));
@@ -196,6 +197,7 @@ button {
   position: absolute;
   right: 0.95rem;
   top: 0.95rem;
+  z-index: 12;
   width: auto;
   height: auto;
   padding: 0.25rem;

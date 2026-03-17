@@ -1,13 +1,16 @@
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, signal, WritableSignal } from '@angular/core';
 import { AbstractControl, FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { finalize } from 'rxjs';
+import { Observable, finalize } from 'rxjs';
 import { AlertModalService } from '../../services/alert-modal.service';
 import { AuthService } from '../../services/auth.service';
 
 type LoginModal = 'none' | 'login' | 'register' | 'forgot' | 'reset';
+type VerifyEmailState = 'idle' | 'pending' | 'success' | 'error';
+type MessageTarget = 'page' | 'modal';
+type SubmitAction = 'login' | 'register' | 'forgot' | 'reset';
 
 @Component({
   selector: 'app-login-page',
@@ -26,6 +29,14 @@ export class LoginPage implements OnInit {
   public infoMessage : string = '';
   public activeModal : LoginModal = 'none';
   public isResetOnlyRoute : boolean = false;
+  public messageTarget : MessageTarget = 'page';
+  public readonly verifyEmailState : WritableSignal<VerifyEmailState> = signal<VerifyEmailState>('idle');
+  public readonly isSubmitting : Record<SubmitAction, boolean> = {
+    login: false,
+    register: false,
+    forgot: false,
+    reset: false,
+  };
   private readonly flashMessageKey : string = 'subtitle2_flash_message';
 
   public constructor(
@@ -67,45 +78,8 @@ export class LoginPage implements OnInit {
 
     this.consumeFlashMessage();
 
-    if (verifyToken !== null && verifyToken.length > 0) {
-      const pendingText : string = 'Email megerősítés folyamatban...';
-      this.setInfo(pendingText);
-      this.authService
-        .verifyEmail(verifyToken)
-        .pipe(
-          finalize(() : void => {
-            if (this.infoMessage === pendingText) {
-              this.infoMessage = '';
-            }
-            void this.router.navigate([], {
-              relativeTo: this.activatedRoute,
-              queryParams: { verifyToken: null },
-              queryParamsHandling: 'merge',
-              replaceUrl: true,
-            });
-          }),
-        )
-        .subscribe({
-          next: () => {
-            this.setSuccess('Email cím sikeresen megerősítve.');
-          },
-          error: (error : unknown) => {
-            this.handleError(error, 'Az email megerősítés sikertelen.');
-          },
-        });
-    }
-
-    if (this.isResetOnlyRoute === true) {
-      const validResetToken : boolean = resetToken !== null && resetToken.length > 0;
-      if (validResetToken === false) {
-        this.errorMessage = 'Érvénytelen vagy hiányzó reset link.';
-        void this.router.navigate(['/login']);
-        return;
-      }
-
-      this.resetForm.patchValue({ token: resetToken });
-      this.activeModal = 'reset';
-    }
+    this.handleVerifyEmailFlow(verifyToken);
+    this.initializeResetOnlyRoute(resetToken);
   }
 
   /**
@@ -119,9 +93,7 @@ export class LoginPage implements OnInit {
     }
 
     this.activeModal = modal;
-    this.errorMessage = '';
-    this.message = '';
-    this.infoMessage = '';
+    this.clearMessages('modal');
   }
 
   /**
@@ -135,8 +107,7 @@ export class LoginPage implements OnInit {
     }
 
     this.activeModal = 'none';
-    this.errorMessage = '';
-    this.infoMessage = '';
+    this.clearMessages('page');
   }
 
   /**
@@ -158,25 +129,18 @@ export class LoginPage implements OnInit {
    * @returns Nem ad vissza értéket.
    */
   public submitLogin() : void {
-    this.clearMessages();
-    const invalidForm : boolean = this.loginForm.invalid;
-    if (invalidForm === true) {
-      this.loginForm.markAllAsTouched();
-      return;
-    }
-
     const email : string = String(this.loginForm.value.email ?? '');
     const password : string = String(this.loginForm.value.password ?? '');
-
-    this.setInfo('Bejelentkezés folyamatban...');
-    this.authService.login(email, password).subscribe({
-      next: () => {
-        this.setSuccess('Sikeres bejelentkezés, átirányítás...');
+    this.executeModalSubmit({
+      action: 'login',
+      form: this.loginForm,
+      pendingText: 'Bejelentkezés folyamatban...',
+      requestFactory: () => this.authService.login(email, password),
+      onSuccess: () => {
+        this.setSuccess('Sikeres bejelentkezés, átirányítás...', 'modal');
         void this.router.navigate(['/lista']);
       },
-      error: (error : unknown) => {
-        this.handleError(error, 'Bejelentkezési hiba.');
-      },
+      fallbackError: 'Bejelentkezési hiba.',
     });
   }
 
@@ -185,26 +149,19 @@ export class LoginPage implements OnInit {
    * @returns Nem ad vissza értéket.
    */
   public submitRegister() : void {
-    this.clearMessages();
-    const invalidForm : boolean = this.registerForm.invalid;
-    if (invalidForm === true) {
-      this.registerForm.markAllAsTouched();
-      return;
-    }
-
     const email : string = String(this.registerForm.value.email ?? '');
     const password : string = String(this.registerForm.value.password ?? '');
-
-    this.setInfo('Regisztráció küldése...');
-    this.authService.register(email, password).subscribe({
-      next: () => {
-        this.setSuccess('Sikeres regisztráció. Megerősítő email elküldve.');
+    this.executeModalSubmit({
+      action: 'register',
+      form: this.registerForm,
+      pendingText: 'Regisztráció küldése...',
+      requestFactory: () => this.authService.register(email, password),
+      onSuccess: () => {
         this.activeModal = 'login';
         this.loginForm.patchValue({ email });
+        this.setSuccess('Sikeres regisztráció. Megerősítő email elküldve.', 'modal');
       },
-      error: (error : unknown) => {
-        this.handleError(error, 'Regisztrációs hiba.');
-      },
+      fallbackError: 'Regisztrációs hiba.',
     });
   }
 
@@ -213,22 +170,16 @@ export class LoginPage implements OnInit {
    * @returns Nem ad vissza értéket.
    */
   public submitForgot() : void {
-    this.clearMessages();
-    const invalidForm : boolean = this.forgotForm.invalid;
-    if (invalidForm === true) {
-      this.forgotForm.markAllAsTouched();
-      return;
-    }
-
     const email : string = String(this.forgotForm.value.email ?? '');
-    this.setInfo('Reset email küldése...');
-    this.authService.forgotPassword(email).subscribe({
-      next: () => {
-        this.setSuccess('Ha létezik a fiók, a jelszó-visszaállító email elküldésre került.');
+    this.executeModalSubmit({
+      action: 'forgot',
+      form: this.forgotForm,
+      pendingText: 'Reset email küldése...',
+      requestFactory: () => this.authService.forgotPassword(email),
+      onSuccess: () => {
+        this.setSuccess('Ha létezik a fiók, a jelszó-visszaállító email elküldésre került.', 'modal');
       },
-      error: (error : unknown) => {
-        this.handleError(error, 'Nem sikerült elindítani a jelszó-visszaállítást.');
-      },
+      fallbackError: 'Nem sikerült elindítani a jelszó-visszaállítást.',
     });
   }
 
@@ -237,26 +188,19 @@ export class LoginPage implements OnInit {
    * @returns Nem ad vissza értéket.
    */
   public submitReset() : void {
-    this.clearMessages();
-    const invalidForm : boolean = this.resetForm.invalid;
-    if (invalidForm === true) {
-      this.resetForm.markAllAsTouched();
-      return;
-    }
-
     const token : string = String(this.resetForm.value.token ?? '');
     const newPassword : string = String(this.resetForm.value.newPassword ?? '');
-
-    this.setInfo('Új jelszó mentése...');
-    this.authService.resetPassword(token, newPassword).subscribe({
-      next: () => {
+    this.executeModalSubmit({
+      action: 'reset',
+      form: this.resetForm,
+      pendingText: 'Új jelszó mentése...',
+      requestFactory: () => this.authService.resetPassword(token, newPassword),
+      onSuccess: () => {
         const successMessage : string = 'A jelszó sikeresen módosítva. Most már be tudsz jelentkezni.';
         this.saveFlashMessage(successMessage);
         void this.router.navigate(['/login']);
       },
-      error: (error : unknown) => {
-        this.handleError(error, 'A jelszó visszaállítás sikertelen.');
-      },
+      fallbackError: 'A jelszó visszaállítás sikertelen.',
     });
   }
 
@@ -266,7 +210,8 @@ export class LoginPage implements OnInit {
    * @param fallback Alapértelmezett hibaüzenet.
    * @returns Nem ad vissza értéket.
    */
-  private handleError(error : unknown, fallback : string) : void {
+  private handleError(error : unknown, fallback : string, target : MessageTarget) : void {
+    this.messageTarget = target;
     this.message = '';
     this.infoMessage = '';
     this.errorMessage = this.extractErrorMessage(error, fallback);
@@ -281,7 +226,8 @@ export class LoginPage implements OnInit {
    * @param text Sikeres művelet üzenete.
    * @returns Nem ad vissza értéket.
    */
-  private setSuccess(text : string) : void {
+  private setSuccess(text : string, target : MessageTarget) : void {
+    this.messageTarget = target;
     this.message = text;
     this.errorMessage = '';
     this.infoMessage = '';
@@ -292,7 +238,8 @@ export class LoginPage implements OnInit {
    * @param text Információs üzenet.
    * @returns Nem ad vissza értéket.
    */
-  private setInfo(text : string) : void {
+  private setInfo(text : string, target : MessageTarget) : void {
+    this.messageTarget = target;
     this.infoMessage = text;
     this.errorMessage = '';
     this.message = '';
@@ -302,7 +249,10 @@ export class LoginPage implements OnInit {
    * Üzenetek törlése.
    * @returns Nem ad vissza értéket.
    */
-  private clearMessages() : void {
+  private clearMessages(target ?: MessageTarget) : void {
+    if (target !== undefined) {
+      this.messageTarget = target;
+    }
     this.message = '';
     this.errorMessage = '';
     this.infoMessage = '';
@@ -324,7 +274,7 @@ export class LoginPage implements OnInit {
   private consumeFlashMessage() : void {
     const flashMessage : string | null = localStorage.getItem(this.flashMessageKey);
     if (flashMessage !== null && flashMessage.length > 0) {
-      this.setSuccess(flashMessage);
+      this.setSuccess(flashMessage, 'page');
       localStorage.removeItem(this.flashMessageKey);
     }
   }
@@ -444,5 +394,108 @@ export class LoginPage implements OnInit {
     }
 
     return 'Érvénytelen érték.';
+  }
+
+  /**
+   * Verify email állapot egységes állítása debug loggal.
+   */
+  private setVerifyEmailState(state : VerifyEmailState) : void {
+    this.verifyEmailState.set(state);
+  }
+
+  /**
+   * Verify-email query param esetén lefuttatja az email megerősítést.
+   */
+  private handleVerifyEmailFlow(verifyToken : string | null) : void {
+    if (verifyToken === null || verifyToken.length === 0) {
+      return;
+    }
+
+    this.clearMessages('page');
+    this.setVerifyEmailState('pending');
+
+    this.authService
+      .verifyEmail(verifyToken)
+      .pipe(
+        finalize(() : void => {
+          this.infoMessage = '';
+          if (this.verifyEmailState() === 'pending') {
+            this.setVerifyEmailState('idle');
+          }
+          void this.router.navigate([], {
+            relativeTo: this.activatedRoute,
+            queryParams: { verifyToken: null },
+            queryParamsHandling: 'merge',
+            replaceUrl: true,
+          });
+        }),
+      )
+      .subscribe({
+        next: () => {
+          this.setVerifyEmailState('success');
+          this.clearMessages('page');
+          this.setSuccess('Email cím megerősítve, most már bejelentkezhetsz.', 'page');
+        },
+        error: (error : unknown) => {
+          this.setVerifyEmailState('error');
+          this.handleError(error, 'Az email megerősítés sikertelen.', 'page');
+        },
+      });
+  }
+
+  /**
+   * Reset-only route inicializálása token alapján.
+   */
+  private initializeResetOnlyRoute(resetToken : string | null) : void {
+    if (this.isResetOnlyRoute === false) {
+      return;
+    }
+
+    const validResetToken : boolean = resetToken !== null && resetToken.length > 0;
+    if (validResetToken === false) {
+      this.errorMessage = 'Érvénytelen vagy hiányzó reset link.';
+      void this.router.navigate(['/login']);
+      return;
+    }
+
+    this.resetForm.patchValue({ token: resetToken });
+    this.activeModal = 'reset';
+  }
+
+  /**
+   * Egységes submit futtató modal formokhoz.
+   */
+  private executeModalSubmit(params : {
+    action : SubmitAction;
+    form : FormGroup;
+    pendingText : string;
+    requestFactory : () => Observable<unknown>;
+    onSuccess : () => void;
+    fallbackError : string;
+  }) : void {
+    const { action, form, pendingText, requestFactory, onSuccess, fallbackError } = params;
+
+    this.clearMessages('modal');
+    if (form.invalid === true) {
+      form.markAllAsTouched();
+      return;
+    }
+
+    this.isSubmitting[action] = true;
+    this.setInfo(pendingText, 'modal');
+    requestFactory()
+      .pipe(
+        finalize(() : void => {
+          this.isSubmitting[action] = false;
+        }),
+      )
+      .subscribe({
+        next: () => {
+          onSuccess();
+        },
+        error: (error : unknown) => {
+          this.handleError(error, fallbackError, 'modal');
+        },
+      });
   }
 }

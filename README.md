@@ -35,6 +35,26 @@ npm start
 
 A frontend `ng serve --proxy-config proxy.conf.json` módban fut, így minden API hívás `/api/...` URL-en megy a backend felé.
 
+## Unit tesztek
+
+### Backend unit tesztek
+
+```bash
+source ~/.nvm/nvm.sh
+nvm use 24
+cd backend
+npm test -- --runInBand
+```
+
+### Frontend unit tesztek
+
+```bash
+source ~/.nvm/nvm.sh
+nvm use 24
+cd frontend
+npm test -- --watch=false
+```
+
 ## Fő route-ok
 
 - `/login`

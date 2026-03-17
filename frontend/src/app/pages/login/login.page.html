@@ -30,7 +30,13 @@
     }
   </div>
 
-  @if (message.length > 0 || errorMessage.length > 0 || infoMessage.length > 0) {
+  @if (verifyEmailState() === 'pending') {
+    <div class="alerts">
+      <p class="status-pending">Email megerősítés folyamatban...</p>
+    </div>
+  }
+
+  @if (messageTarget === 'page' && (message.length > 0 || errorMessage.length > 0 || infoMessage.length > 0)) {
     <div class="alerts">
       @if (message.length > 0) {
         <p class="ok">{{ message }}</p>
@@ -49,7 +55,7 @@
       <button type="button" class="close" (click)="closeModal()" aria-label="Bezárás">
         <span class="close-icon" aria-hidden="true"></span>
       </button>
-      @if (message.length > 0 || errorMessage.length > 0 || infoMessage.length > 0) {
+      @if (messageTarget === 'modal' && (message.length > 0 || errorMessage.length > 0 || infoMessage.length > 0)) {
         <div class="alerts in-modal">
           @if (message.length > 0) {
             <p class="ok">{{ message }}</p>
@@ -88,8 +94,8 @@
         @if (isControlInvalid(loginForm, 'password')) {
           <p class="field-error">{{ getControlError(loginForm, 'password') }}</p>
         }
-        <button type="submit">Belépés</button>
-        @if (errorMessage.length > 0) {
+        <button type="submit" [disabled]="isSubmitting.login">{{ isSubmitting.login ? 'Belépés...' : 'Belépés' }}</button>
+        @if (messageTarget === 'modal' && errorMessage.length > 0) {
           <p class="form-error">{{ errorMessage }}</p>
         }
         <p class="inline-links">
@@ -123,8 +129,8 @@
         @if (isControlInvalid(registerForm, 'password')) {
           <p class="field-error">{{ getControlError(registerForm, 'password') }}</p>
         }
-        <button type="submit">Regisztráció</button>
-        @if (errorMessage.length > 0) {
+        <button type="submit" [disabled]="isSubmitting.register">{{ isSubmitting.register ? 'Regisztráció...' : 'Regisztráció' }}</button>
+        @if (messageTarget === 'modal' && errorMessage.length > 0) {
           <p class="form-error">{{ errorMessage }}</p>
         }
       </form>
@@ -143,8 +149,8 @@
         @if (isControlInvalid(forgotForm, 'email')) {
           <p class="field-error">{{ getControlError(forgotForm, 'email') }}</p>
         }
-        <button type="submit">Reset email küldése</button>
-        @if (errorMessage.length > 0) {
+        <button type="submit" [disabled]="isSubmitting.forgot">{{ isSubmitting.forgot ? 'Küldés...' : 'Reset email küldése' }}</button>
+        @if (messageTarget === 'modal' && errorMessage.length > 0) {
           <p class="form-error">{{ errorMessage }}</p>
         }
       </form>
@@ -171,8 +177,8 @@
         @if (isControlInvalid(resetForm, 'newPassword')) {
           <p class="field-error">{{ getControlError(resetForm, 'newPassword') }}</p>
         }
-        <button type="submit">Jelszó mentése</button>
-        @if (errorMessage.length > 0) {
+        <button type="submit" [disabled]="isSubmitting.reset">{{ isSubmitting.reset ? 'Mentés...' : 'Jelszó mentése' }}</button>
+        @if (messageTarget === 'modal' && errorMessage.length > 0) {
           <p class="form-error">{{ errorMessage }}</p>
         }
       </form>

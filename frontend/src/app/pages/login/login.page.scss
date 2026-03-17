@@ -139,6 +139,15 @@ button {
   background: var(--surface-color);
 }
 
+.status-pending {
+  margin: 0;
+  padding: 0.72rem 0.86rem;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  background: var(--surface-color);
+  color: #1f5f9e;
+}
+
 .ok {
   color: #0a7b43;
 }
@@ -276,6 +285,13 @@ input:focus {
 
 .card button:hover {
   transform: translateY(-1px);
+}
+
+.card button:disabled {
+  opacity: 0.72;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 .inline-links {

@@ -34,6 +34,10 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Frontend unit tests
+        working-directory: frontend
+        run: npm test -- --watch=false
+
       - name: Build frontend
         working-directory: frontend
         run: npm run build
@@ -41,6 +45,10 @@ jobs:
       - name: Install backend deps
         working-directory: backend
         run: npm ci
+
+      - name: Backend unit tests
+        working-directory: backend
+        run: npm test -- --runInBand
 
       - name: Build backend
         working-directory: backend

@@ -145,6 +145,7 @@ Alapértelmezések:
 - frontend web root: `/var/www/html`
 - PM2 app név: `subtitle2`
 
-Cloudflare cache purge (CI után automatikusan) opcionális secretek:
-- `CLOUDFLARE_API_TOKEN`
-- `CLOUDFLARE_ZONE_ID`
+Cloudflare cache purge (CI után automatikusan) opcionális secret:
+- `CF_CACHE_PURGE`
+  tartalma:
+  `CLOUDFLARE_API_TOKEN=...` és `CLOUDFLARE_ZONE_ID=...` (külön sorban)

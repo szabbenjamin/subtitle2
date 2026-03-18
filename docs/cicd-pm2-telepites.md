@@ -98,10 +98,22 @@ A deploy script:
 
 ### Cloudflare purge beállítás
 
-A workflow Cloudflare purge lépése két GitHub secretet használ:
+A workflow Cloudflare purge lépése egy GitHub secretet használ:
 
-- `CLOUDFLARE_API_TOKEN`
-- `CLOUDFLARE_ZONE_ID`
+- `CF_CACHE_PURGE`
+
+Ajánlott tartalom (multiline):
+
+```text
+CLOUDFLARE_API_TOKEN=xxxx
+CLOUDFLARE_ZONE_ID=yyyy
+```
+
+JSON formátum is támogatott:
+
+```json
+{"CLOUDFLARE_API_TOKEN":"xxxx","CLOUDFLARE_ZONE_ID":"yyyy"}
+```
 
 Az API tokenhez minimálisan szükséges jogosultság:
 - Zone: `Cache Purge` (Edit)

@@ -63,11 +63,41 @@ jobs:
         run: bash scripts/deploy-selfhosted.sh
 
       - name: Purge Cloudflare Cache
-        if: ${{ success() && secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ZONE_ID != '' }}
+        if: ${{ success() }}
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          CF_CACHE_PURGE: ${{ secrets.CF_CACHE_PURGE }}
         run: |
+          if [ -z "${CF_CACHE_PURGE}" ]; then
+            echo "Cloudflare purge kihagyva: hiányzó secret (CF_CACHE_PURGE)."
+            exit 0
+          fi
+
+          CLOUDFLARE_API_TOKEN="$(
+            printf '%s\n' "$CF_CACHE_PURGE" | sed -n 's/^CLOUDFLARE_API_TOKEN=//p' | head -n 1
+          )"
+          CLOUDFLARE_ZONE_ID="$(
+            printf '%s\n' "$CF_CACHE_PURGE" | sed -n 's/^CLOUDFLARE_ZONE_ID=//p' | head -n 1
+          )"
+
+          # Opcionális JSON fallback:
+          # {"CLOUDFLARE_API_TOKEN":"...","CLOUDFLARE_ZONE_ID":"..."}
+          if [ -z "${CLOUDFLARE_API_TOKEN}" ] || [ -z "${CLOUDFLARE_ZONE_ID}" ]; then
+            CLOUDFLARE_API_TOKEN="$(
+              node -e "try { const v = JSON.parse(process.env.CF_CACHE_PURGE || '{}'); process.stdout.write(v.CLOUDFLARE_API_TOKEN || ''); } catch { process.stdout.write(''); }"
+            )"
+            CLOUDFLARE_ZONE_ID="$(
+              node -e "try { const v = JSON.parse(process.env.CF_CACHE_PURGE || '{}'); process.stdout.write(v.CLOUDFLARE_ZONE_ID || ''); } catch { process.stdout.write(''); }"
+            )"
+          fi
+
+          if [ -z "${CLOUDFLARE_API_TOKEN}" ] || [ -z "${CLOUDFLARE_ZONE_ID}" ]; then
+            echo "HIBA: CF_CACHE_PURGE formátuma érvénytelen."
+            echo "Elvárt példa (multiline):"
+            echo "CLOUDFLARE_API_TOKEN=xxxx"
+            echo "CLOUDFLARE_ZONE_ID=yyyy"
+            exit 1
+          fi
+
           RESPONSE="$(
             curl -sS -X POST "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/purge_cache" \
               -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \

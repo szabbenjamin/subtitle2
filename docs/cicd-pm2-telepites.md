@@ -78,10 +78,13 @@ A `selfhosted-cicd.yml` push-ra (main/master) és manuálisan fut.
 Lépések:
 
 1. frontend `npm ci`
-2. frontend `npm run build`
-3. backend `npm ci`
-4. backend `npm run build`
-5. deploy script futtatása
+2. frontend unit tesztek (`npm test -- --watch=false`)
+3. frontend `npm run build`
+4. backend `npm ci`
+5. backend unit tesztek (`npm test -- --runInBand`)
+6. backend `npm run build`
+7. deploy script futtatása
+8. Cloudflare teljes cache purge (ha a szükséges GitHub secretek be vannak állítva)
 
 A deploy script:
 
@@ -91,6 +94,18 @@ A deploy script:
 - backendben futtat `npm ci --omit=dev` (a `winben` user nevében)
 - PM2-vel indítja/újraindítja a szolgáltatást (`PM2_APP_NAME`, default: `subtitle2`)
 - `pm2 save`-ot hív
+- sikeres deploy után Cloudflare API-val `purge_everything` hívást küld
+
+### Cloudflare purge beállítás
+
+A workflow Cloudflare purge lépése két GitHub secretet használ:
+
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ZONE_ID`
+
+Az API tokenhez minimálisan szükséges jogosultság:
+- Zone: `Cache Purge` (Edit)
+- Zone scope: az adott domain zónája
 
 ## 5. PM2 tartós indulás (boot után is)
 

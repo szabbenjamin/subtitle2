@@ -144,3 +144,7 @@ Alapértelmezések:
 - backend deploy root: `/home/winben/subtitle2`
 - frontend web root: `/var/www/html`
 - PM2 app név: `subtitle2`
+
+Cloudflare cache purge (CI után automatikusan) opcionális secretek:
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ZONE_ID`

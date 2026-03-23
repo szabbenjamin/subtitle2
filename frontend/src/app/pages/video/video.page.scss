@@ -245,6 +245,19 @@ button:disabled {
   gap: 0.9rem;
 }
 
+.settings-grid input[type='color'] {
+  padding: 0.08rem;
+}
+
+.settings-grid input[type='color']::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.settings-grid input[type='color']::-webkit-color-swatch,
+.settings-grid input[type='color']::-moz-color-swatch {
+  border: 0;
+}
+
 .collapse-toggle {
   width: 100%;
   margin-top: 0.7rem;

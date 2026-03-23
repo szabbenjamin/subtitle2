@@ -198,13 +198,34 @@
             </select>
 
             <label class="mt-2" for="marginL">Bal margó:</label>
-            <input id="marginL" type="number" min="0" max="300" [(ngModel)]="presetForm.marginL" (ngModelChange)="onPresetFieldChange()" />
+            <input
+              id="marginL"
+              type="number"
+              min="0"
+              [max]="marginHorizontalMax"
+              [(ngModel)]="presetForm.marginL"
+              (ngModelChange)="onPresetFieldChange()"
+            />
 
             <label class="mt-2" for="marginR">Jobb margó:</label>
-            <input id="marginR" type="number" min="0" max="300" [(ngModel)]="presetForm.marginR" (ngModelChange)="onPresetFieldChange()" />
+            <input
+              id="marginR"
+              type="number"
+              min="0"
+              [max]="marginHorizontalMax"
+              [(ngModel)]="presetForm.marginR"
+              (ngModelChange)="onPresetFieldChange()"
+            />
 
             <label class="mt-2" for="marginV">Függőleges margó:</label>
-            <input id="marginV" type="number" min="0" max="300" [(ngModel)]="presetForm.marginV" (ngModelChange)="onPresetFieldChange()" />
+            <input
+              id="marginV"
+              type="number"
+              min="0"
+              [max]="marginVerticalMax"
+              [(ngModel)]="presetForm.marginV"
+              (ngModelChange)="onPresetFieldChange()"
+            />
 
             <label class="mt-2" for="encoding">Encoding:</label>
             <input id="encoding" type="text" [(ngModel)]="presetForm.encoding" (ngModelChange)="onPresetFieldChange()" />

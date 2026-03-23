@@ -10,6 +10,11 @@ export interface ExportedVideoFile {
   fileName : string;
 }
 
+interface AssRenderResolution {
+  width : number;
+  height : number;
+}
+
 @Injectable()
 export class VideoExportService {
   /**
@@ -43,7 +48,8 @@ export class VideoExportService {
     const outputPath : string = join(exportDir, `${safeBaseName}-${video.id}-${stamp}.mp4`);
     const outputFileName : string = `${safeBaseName}-subtitled.mp4`;
 
-    const assContent : string = this.buildAssFileContent(video, preset);
+    const renderResolution : AssRenderResolution = await this.detectAssRenderResolution(inputPath);
+    const assContent : string = this.buildAssFileContent(video, preset, renderResolution);
     await writeFile(assPath, assContent, 'utf8');
     await this.runFfmpegBurn(inputPath, assPath, outputPath);
 
@@ -56,23 +62,26 @@ export class VideoExportService {
   /**
    * ASS fájl tartalom építése az SRT és sablon adatok alapján.
    */
-  private buildAssFileContent(video : VideoEntity, preset : SubtitlePresetEntity) : string {
+  private buildAssFileContent(video : VideoEntity, preset : SubtitlePresetEntity, renderResolution : AssRenderResolution) : string {
     const bold : number = preset.bold ? 1 : 0;
     const italic : number = preset.italic ? 1 : 0;
     const underline : number = preset.underline ? 1 : 0;
     const strikeOut : number = preset.strikeOut ? 1 : 0;
+    const marginL : number = this.clampMargin(preset.marginL, renderResolution.width);
+    const marginR : number = this.clampMargin(preset.marginR, renderResolution.width);
+    const marginV : number = this.clampMargin(preset.marginV, renderResolution.height);
 
     const assLines : string[] = [
       '[Script Info]',
       'ScriptType: v4.00+',
       'Collisions: Normal',
-      'PlayResX: 1080',
-      'PlayResY: 1920',
+      `PlayResX: ${renderResolution.width}`,
+      `PlayResY: ${renderResolution.height}`,
       'ScaledBorderAndShadow: yes',
       '',
       '[V4+ Styles]',
       'Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding',
-      `Style: Default,${preset.fontName},${preset.fontSize},${this.hexToAegisubColor(preset.primaryColour)},${this.hexToAegisubColor(preset.secondaryColour)},${this.hexToAegisubColor(preset.outlineColour)},&H80000000,${bold},${italic},${underline},${strikeOut},${preset.scaleX},${preset.scaleY},${preset.spacing},${preset.angle},${preset.borderStyle},${preset.outline},${preset.shadow},${preset.alignment},${preset.marginL},${preset.marginR},${preset.marginV},${preset.encoding}`,
+      `Style: Default,${preset.fontName},${preset.fontSize},${this.hexToAegisubColor(preset.primaryColour)},${this.hexToAegisubColor(preset.secondaryColour)},${this.hexToAegisubColor(preset.outlineColour)},&H80000000,${bold},${italic},${underline},${strikeOut},${preset.scaleX},${preset.scaleY},${preset.spacing},${preset.angle},${preset.borderStyle},${preset.outline},${preset.shadow},${preset.alignment},${marginL},${marginR},${marginV},${preset.encoding}`,
       '',
       '[Events]',
       'Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text',
@@ -190,6 +199,99 @@ export class VideoExportService {
    */
   private escapeAssText(text : string) : string {
     return text.replace(/\\/g, '\\\\').replace(/{/g, '\\{').replace(/}/g, '\\}');
+  }
+
+  /**
+   * ASS render felbontás kiolvasása a videóból.
+   * @param inputPath Bemeneti videó útvonala.
+   * @returns ASS PlayRes érték.
+   */
+  private async detectAssRenderResolution(inputPath : string) : Promise<AssRenderResolution> {
+    const fallback : AssRenderResolution = { width: 1080, height: 1920 };
+    const output : string | null = await this.execTool('ffprobe', [
+      '-v',
+      'error',
+      '-select_streams',
+      'v:0',
+      '-show_entries',
+      'stream=width,height',
+      '-of',
+      'json',
+      inputPath,
+    ]);
+    if (output === null) {
+      return fallback;
+    }
+
+    try {
+      const parsed : unknown = JSON.parse(output);
+      const stream : { width ?: unknown; height ?: unknown } | undefined =
+        typeof parsed === 'object' && parsed !== null && Array.isArray((parsed as { streams ?: unknown }).streams)
+          ? ((parsed as { streams : Array<{ width ?: unknown; height ?: unknown }> }).streams[0] ?? undefined)
+          : undefined;
+      const width : number = this.normalizeResolutionValue(stream?.width, fallback.width);
+      const height : number = this.normalizeResolutionValue(stream?.height, fallback.height);
+      return { width, height };
+    } catch {
+      return fallback;
+    }
+  }
+
+  /**
+   * Felbontás érték normalizálása pozitív egészre.
+   * @param value Nyers ffprobe érték.
+   * @param fallback Tartalék érték.
+   * @returns Normalizált dimenzió.
+   */
+  private normalizeResolutionValue(value : unknown, fallback : number) : number {
+    const numeric : number = Number(value);
+    if (Number.isFinite(numeric) === false) {
+      return fallback;
+    }
+    const rounded : number = Math.round(numeric);
+    if (rounded <= 0) {
+      return fallback;
+    }
+    return rounded;
+  }
+
+  /**
+   * Margóérték korlátozása a renderfelbontás tartományára.
+   * @param value Nyers margó.
+   * @param maxValue Maximum.
+   * @returns Korlátozott margó.
+   */
+  private clampMargin(value : number, maxValue : number) : number {
+    if (Number.isFinite(value) === false) {
+      return 0;
+    }
+    const rounded : number = Math.round(value);
+    return Math.min(Math.max(0, rounded), Math.max(0, maxValue));
+  }
+
+  /**
+   * Külső parancs futtatása és kimenet visszaadása.
+   * @param command Futtatandó parancs.
+   * @param args Parancs argumentumok.
+   * @returns stdout/stderr vagy null hiba esetén.
+   */
+  private async execTool(command : string, args : string[]) : Promise<string | null> {
+    return await new Promise<string | null>((resolve : (value : string | null) => void) => {
+      execFile(command, args, { timeout: 20_000 }, (error : Error | null, stdout : string, stderr : string) => {
+        if (error !== null) {
+          const fallbackOutput : string = `${stdout}\n${stderr}`.trim();
+          if (fallbackOutput.length > 0) {
+            resolve(fallbackOutput);
+            return;
+          }
+          resolve(null);
+          return;
+        }
+
+        const output : string = `${stdout}\n${stderr}`.trim();
+        resolve(output.length > 0 ? output : null);
+      });
+    });
   }
 
   /**

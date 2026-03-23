@@ -99,19 +99,19 @@ export class UpdateSubtitlePresetDto {
   @Type(() => Number)
   @IsInt()
   @Min(0)
-  @Max(300)
+  @Max(10000)
   public marginL !: number;
 
   @Type(() => Number)
   @IsInt()
   @Min(0)
-  @Max(300)
+  @Max(10000)
   public marginR !: number;
 
   @Type(() => Number)
   @IsInt()
   @Min(0)
-  @Max(300)
+  @Max(10000)
   public marginV !: number;
 
   @IsString()

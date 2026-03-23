@@ -45,6 +45,8 @@ export class VideoPage implements OnInit, OnDestroy {
   public generatedSocialHashtags : string[] = [];
   public generatedSocialCombined : string = '';
   public presetForm : SubtitlePresetForm = this.createDefaultPresetForm();
+  public marginHorizontalMax : number = 1080;
+  public marginVerticalMax : number = 1920;
 
   public readonly modelOptions : string[] = ['tiny', 'base', 'small', 'medium', 'large-v3', 'turbo'];
   public readonly languageOptions : Array<{ value : string; label : string }> = [
@@ -159,6 +161,7 @@ export class VideoPage implements OnInit, OnDestroy {
     const target : EventTarget | null = event.target;
     if (target instanceof HTMLVideoElement) {
       this.currentPreviewTimeSeconds = target.currentTime;
+      this.updatePresetMarginBounds(target.videoWidth, target.videoHeight);
       this.updatePreviewCueForCurrentTime();
     }
   }
@@ -926,6 +929,36 @@ export class VideoPage implements OnInit, OnDestroy {
    */
   private updatePreviewCueForCurrentTime() : void {
     this.previewSubtitleText = this.videoPreviewService.findActiveText(this.previewCues, this.currentPreviewTimeSeconds);
+  }
+
+  /**
+   * Margó input maximumok frissítése a videó tényleges felbontására.
+   * @param width Videó szélesség pixelben.
+   * @param height Videó magasság pixelben.
+   * @returns Nem ad vissza értéket.
+   */
+  private updatePresetMarginBounds(width : number, height : number) : void {
+    const safeWidth : number = this.normalizeMarginBound(width, 1080);
+    const safeHeight : number = this.normalizeMarginBound(height, 1920);
+    this.marginHorizontalMax = safeWidth;
+    this.marginVerticalMax = safeHeight;
+  }
+
+  /**
+   * Margó maximum normalizálása.
+   * @param value Bejövő dimenzió érték.
+   * @param fallback Alapértelmezett érték.
+   * @returns Használható pozitív egész.
+   */
+  private normalizeMarginBound(value : number, fallback : number) : number {
+    if (Number.isFinite(value) === false) {
+      return fallback;
+    }
+    const rounded : number = Math.round(value);
+    if (rounded <= 0) {
+      return fallback;
+    }
+    return rounded;
   }
 
   /**

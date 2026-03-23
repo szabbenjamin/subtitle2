@@ -110,7 +110,7 @@ Skálázható minta:
 - Complete: `POST /api/videos/upload/complete`
 - Cancel: `POST /api/videos/upload/cancel`
 
-Javasolt chunk méret: `50MB`.
+Javasolt chunk méret: `10MB`.
 
 Követelmények:
 

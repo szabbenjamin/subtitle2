@@ -34,7 +34,7 @@ export interface ChunkUploadHandle {
 
 @Injectable({ providedIn: 'root' })
 export class VideoService {
-  private readonly chunkSizeBytes : number = 50 * 1024 * 1024;
+  private readonly chunkSizeBytes : number = 10 * 1024 * 1024;
 
   public constructor(private readonly httpClient : HttpClient) {}
 
@@ -72,7 +72,7 @@ export class VideoService {
   }
 
   /**
-   * Videó feltöltése 50 MB-os chunkokban, megszakítható handle-lel.
+   * Videó feltöltése 10 MB-os chunkokban, megszakítható handle-lel.
    * @param file Feltöltendő fájl.
    * @param onProgress Progress callback (százalék, státusz).
    * @returns Megszakítható feltöltési handle.

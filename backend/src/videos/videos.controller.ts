@@ -157,7 +157,7 @@ export class VideosController {
     FileInterceptor('chunk', {
       storage: memoryStorage(),
       limits: {
-        fileSize: 55 * 1024 * 1024,
+        fileSize: 10 * 1024 * 1024,
       },
     }),
   )

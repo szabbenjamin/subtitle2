@@ -64,7 +64,7 @@ export interface InitUploadResponse {
 
 @Injectable()
 export class VideosService {
-  private readonly chunkSizeBytes : number = 50 * 1024 * 1024;
+  private readonly chunkSizeBytes : number = 10 * 1024 * 1024;
   private readonly uploadSessions : Map<string, UploadSession> = new Map<string, UploadSession>();
   private readonly chunkTempRoot : string = join(process.cwd(), 'data', 'upload-chunks');
   private readonly uploadsDir : string;

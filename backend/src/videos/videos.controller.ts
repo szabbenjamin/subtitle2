@@ -157,7 +157,8 @@ export class VideosController {
     FileInterceptor('chunk', {
       storage: memoryStorage(),
       limits: {
-        fileSize: 10 * 1024 * 1024,
+        // 10 MB chunkokhoz kis ráhagyás a biztos feldolgozásért.
+        fileSize: 12 * 1024 * 1024,
       },
     }),
   )

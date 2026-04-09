@@ -56,6 +56,23 @@ interface UploadSession {
   totalChunks : number;
 }
 
+interface ProbedMediaStream {
+  codecName : string | null;
+  bitRate : number | null;
+}
+
+interface ProbedMediaFile {
+  formatNames : string[];
+  formatBitRate : number | null;
+  videoStream : ProbedMediaStream | null;
+  audioStream : ProbedMediaStream | null;
+}
+
+interface StoredMediaFile {
+  storageFileName : string;
+  fileSizeBytes : number;
+}
+
 export interface InitUploadResponse {
   uploadId : string;
   chunkSizeBytes : number;
@@ -96,7 +113,23 @@ export class VideosService {
       TOKEN_ENTRY_TYPE_UPLOAD,
       `Videó feltöltés: ${file.originalname}`,
     );
-    return await this.createFromStoredFile(ownerId, file.originalname, file.filename, file.size);
+    let finalStorageFileName : string = file.filename;
+    try {
+      const normalized : StoredMediaFile = await this.normalizeUploadedMediaFile(file.filename);
+      finalStorageFileName = normalized.storageFileName;
+      return await this.createFromStoredFile(
+        ownerId,
+        file.originalname,
+        normalized.storageFileName,
+        normalized.fileSizeBytes,
+      );
+    } catch (error : unknown) {
+      if (finalStorageFileName !== file.filename) {
+        const normalizedPath : string = join(this.uploadsDir, finalStorageFileName);
+        await rm(normalizedPath, { force: true });
+      }
+      throw error;
+    }
   }
 
   /**
@@ -172,7 +205,7 @@ export class VideosService {
 
     await mkdir(this.uploadsDir, { recursive: true });
     const extension : string = extname(session.originalFileName);
-    const storageFileName : string = `${Date.now()}-${Math.round(Math.random() * 1_000_000)}${extension}`;
+    const storageFileName : string = this.generateStorageFileName(extension);
     const finalPath : string = join(this.uploadsDir, storageFileName);
     const writer = createWriteStream(finalPath, { flags: 'w' });
 
@@ -191,8 +224,9 @@ export class VideosService {
       });
     });
 
+    let normalizedStorage : StoredMediaFile | null = null;
     try {
-      const fileStat = await stat(finalPath);
+      normalizedStorage = await this.normalizeUploadedMediaFile(storageFileName);
       await this.tokensService.charge(
         ownerId,
         TOKEN_COST_UPLOAD,
@@ -202,8 +236,8 @@ export class VideosService {
       const video : VideoDetails = await this.createFromStoredFile(
         ownerId,
         session.originalFileName,
-        storageFileName,
-        Number(fileStat.size),
+        normalizedStorage.storageFileName,
+        normalizedStorage.fileSizeBytes,
       );
 
       this.uploadSessions.delete(dto.uploadId);
@@ -211,6 +245,9 @@ export class VideosService {
 
       return video;
     } catch (error : unknown) {
+      if (normalizedStorage !== null) {
+        await rm(join(this.uploadsDir, normalizedStorage.storageFileName), { force: true });
+      }
       await rm(finalPath, { force: true });
       this.uploadSessions.delete(dto.uploadId);
       await rm(uploadDir, { recursive: true, force: true });
@@ -592,6 +629,50 @@ export class VideosService {
   }
 
   /**
+   * Szükség esetén H.264/AAC MP4 formátumba konvertálja a feltöltött videót.
+   * Ha a fájl már megfelelő, változtatás nélkül marad.
+   * @param storageFileName Feltöltött fájl szerver oldali neve.
+   * @returns A véglegesen tárolt fájl neve és mérete.
+   */
+  private async normalizeUploadedMediaFile(storageFileName : string) : Promise<StoredMediaFile> {
+    const inputPath : string = join(this.uploadsDir, storageFileName);
+    const probed : ProbedMediaFile | null = await this.probeMediaFile(inputPath);
+    const inputFileStat = await stat(inputPath);
+
+    if (this.shouldConvertToTargetFormat(probed) === false) {
+      return {
+        storageFileName,
+        fileSizeBytes: Number(inputFileStat.size),
+      };
+    }
+
+    let convertedStorageFileName : string = this.generateStorageFileName('.mp4');
+    while (convertedStorageFileName === storageFileName) {
+      convertedStorageFileName = this.generateStorageFileName('.mp4');
+    }
+    const outputPath : string = join(this.uploadsDir, convertedStorageFileName);
+
+    try {
+      await this.convertVideoToH264AacMp4({
+        inputPath,
+        outputPath,
+        videoBitRate: probed?.videoStream?.bitRate ?? probed?.formatBitRate ?? null,
+        audioBitRate: probed?.audioStream?.bitRate ?? null,
+      });
+    } catch (error : unknown) {
+      await rm(outputPath, { force: true });
+      throw error;
+    }
+
+    await rm(inputPath, { force: true });
+    const convertedStat = await stat(outputPath);
+    return {
+      storageFileName: convertedStorageFileName,
+      fileSizeBytes: Number(convertedStat.size),
+    };
+  }
+
+  /**
    * Közös videó létrehozás tárolt fájlból.
    * @param ownerId Feltöltő user azonosítója.
    * @param originalFileName Eredeti fájlnév.
@@ -626,6 +707,260 @@ export class VideosService {
 
     const savedVideo : VideoEntity = await this.videosRepository.save(createdVideo);
     return this.toVideoDetails(savedVideo);
+  }
+
+  /**
+   * Eldönti, hogy szükséges-e átkódolás H.264/AAC MP4 formátumba.
+   * Csak videó streamet tartalmazó média esetén konvertál.
+   * @param probed ffprobe adatok.
+   * @returns Igaz, ha konvertálni kell.
+   */
+  private shouldConvertToTargetFormat(probed : ProbedMediaFile | null) : boolean {
+    if (probed === null) {
+      return true;
+    }
+    if (probed.videoStream === null || probed.videoStream.codecName === null) {
+      return false;
+    }
+
+    const isMp4Container : boolean = probed.formatNames.includes('mp4');
+    const isH264Video : boolean = probed.videoStream.codecName === 'h264';
+    const isAacAudio : boolean =
+      probed.audioStream === null ||
+      probed.audioStream.codecName === null ||
+      probed.audioStream.codecName === 'aac';
+
+    return !(isMp4Container && isH264Video && isAacAudio);
+  }
+
+  /**
+   * ffprobe JSON alapján kiolvassa a konténer/codec/bitráta adatokat.
+   * @param inputPath Elemzendő média fájl útvonala.
+   * @returns Feldolgozott média metaadat vagy null.
+   */
+  private async probeMediaFile(inputPath : string) : Promise<ProbedMediaFile | null> {
+    return await new Promise<ProbedMediaFile | null>((resolve : (value : ProbedMediaFile | null) => void) => {
+      execFile(
+        'ffprobe',
+        [
+          '-v',
+          'error',
+          '-print_format',
+          'json',
+          '-show_format',
+          '-show_streams',
+          inputPath,
+        ],
+        { timeout: 20_000 },
+        (error : Error | null, stdout : string) => {
+          if (error !== null || stdout.trim().length === 0) {
+            resolve(null);
+            return;
+          }
+
+          let parsed : unknown;
+          try {
+            parsed = JSON.parse(stdout) as unknown;
+          } catch {
+            resolve(null);
+            return;
+          }
+
+          const rawObject : Record<string, unknown> | null = this.asObject(parsed);
+          if (rawObject === null) {
+            resolve(null);
+            return;
+          }
+
+          const rawFormat : Record<string, unknown> | null = this.asObject(rawObject['format']);
+          const formatNames : string[] = this.parseFormatNames(rawFormat?.['format_name']);
+          const formatBitRate : number | null = this.parseBitRate(rawFormat?.['bit_rate']);
+
+          const rawStreamsValue : unknown = rawObject['streams'];
+          const rawStreams : unknown[] = Array.isArray(rawStreamsValue) ? rawStreamsValue : [];
+          const streamObjects : Record<string, unknown>[] = rawStreams
+            .map((stream : unknown) : Record<string, unknown> | null => this.asObject(stream))
+            .filter((stream : Record<string, unknown> | null) : stream is Record<string, unknown> => stream !== null);
+
+          const videoRaw : Record<string, unknown> | undefined = streamObjects.find(
+            (stream : Record<string, unknown>) => this.parseCodecType(stream['codec_type']) === 'video',
+          );
+          const audioRaw : Record<string, unknown> | undefined = streamObjects.find(
+            (stream : Record<string, unknown>) => this.parseCodecType(stream['codec_type']) === 'audio',
+          );
+
+          resolve({
+            formatNames,
+            formatBitRate,
+            videoStream: this.toProbedStream(videoRaw),
+            audioStream: this.toProbedStream(audioRaw),
+          });
+        },
+      );
+    });
+  }
+
+  /**
+   * ffmpeg alapú átkódolás H.264/AAC MP4 célformátumba.
+   * @param params Konverziós paraméterek.
+   * @returns Nem ad vissza értéket.
+   */
+  private async convertVideoToH264AacMp4(params : {
+    inputPath : string;
+    outputPath : string;
+    videoBitRate : number | null;
+    audioBitRate : number | null;
+  }) : Promise<void> {
+    const ffmpegArgs : string[] = [
+      '-y',
+      '-i',
+      params.inputPath,
+      '-map',
+      '0:v:0?',
+      '-map',
+      '0:a:0?',
+      '-c:v',
+      'libx264',
+      '-c:a',
+      'aac',
+      '-movflags',
+      '+faststart',
+    ];
+
+    if (params.videoBitRate !== null) {
+      ffmpegArgs.push('-b:v', this.toBitRateArgument(params.videoBitRate, 100));
+    }
+    if (params.audioBitRate !== null) {
+      ffmpegArgs.push('-b:a', this.toBitRateArgument(params.audioBitRate, 32));
+    }
+
+    ffmpegArgs.push(params.outputPath);
+
+    await new Promise<void>((resolve : () => void, reject : (error : Error) => void) => {
+      execFile(
+        'ffmpeg',
+        ffmpegArgs,
+        { timeout: 0 },
+        (error : Error | null, stdout : string, stderr : string) => {
+          if (error !== null) {
+            const details : string = `${stdout}\n${stderr}`.trim();
+            reject(new BadRequestException(`A videó konvertálása sikertelen: ${details}`));
+            return;
+          }
+          resolve();
+        },
+      );
+    });
+  }
+
+  /**
+   * Becsült bitráta átalakítása ffmpeg argumentummá.
+   * @param bitRate Bitráta bit/s értékben.
+   * @param minimumKbps Minimális kbit/s érték.
+   * @returns ffmpeg kompatibilis bitráta (`1234k`).
+   */
+  private toBitRateArgument(bitRate : number, minimumKbps : number) : string {
+    const kbps : number = Math.max(minimumKbps, Math.round(bitRate / 1000));
+    return `${kbps}k`;
+  }
+
+  /**
+   * Egységes, véletlen szerver oldali fájlnév generálás.
+   * @param extension Fájlkiterjesztés ponttal együtt.
+   * @returns Generált fájlnév.
+   */
+  private generateStorageFileName(extension : string) : string {
+    return `${Date.now()}-${Math.round(Math.random() * 1_000_000)}${extension}`;
+  }
+
+  /**
+   * Ismeretlen bemenet objektummá konvertálása.
+   * @param value Nyers bemenet.
+   * @returns Objektum vagy null.
+   */
+  private asObject(value : unknown) : Record<string, unknown> | null {
+    if (typeof value !== 'object' || value === null) {
+      return null;
+    }
+    return value as Record<string, unknown>;
+  }
+
+  /**
+   * formátumnevek normalizálása ffprobe válaszból.
+   * @param rawFormatName Nyers formátumnév mező.
+   * @returns Normalizált formátumnév lista.
+   */
+  private parseFormatNames(rawFormatName : unknown) : string[] {
+    if (typeof rawFormatName !== 'string') {
+      return [];
+    }
+    return rawFormatName
+      .split(',')
+      .map((formatName : string) => formatName.trim().toLowerCase())
+      .filter((formatName : string) => formatName.length > 0);
+  }
+
+  /**
+   * Nyers codec típus normalizálása.
+   * @param rawCodecType Nyers codec_type érték.
+   * @returns `video`, `audio` vagy null.
+   */
+  private parseCodecType(rawCodecType : unknown) : string | null {
+    if (typeof rawCodecType !== 'string') {
+      return null;
+    }
+    const normalized : string = rawCodecType.trim().toLowerCase();
+    if (normalized.length === 0) {
+      return null;
+    }
+    return normalized;
+  }
+
+  /**
+   * Stream objektumból codec + bitráta kiolvasása.
+   * @param stream Nyers stream objektum.
+   * @returns Egységes stream információ vagy null.
+   */
+  private toProbedStream(stream ?: Record<string, unknown>) : ProbedMediaStream | null {
+    if (stream === undefined) {
+      return null;
+    }
+    const codecName : string | null = this.parseCodecName(stream['codec_name']);
+    const bitRate : number | null = this.parseBitRate(stream['bit_rate']);
+    return {
+      codecName,
+      bitRate,
+    };
+  }
+
+  /**
+   * Nyers codec név normalizálása.
+   * @param rawCodecName Nyers codec név.
+   * @returns Codec név vagy null.
+   */
+  private parseCodecName(rawCodecName : unknown) : string | null {
+    if (typeof rawCodecName !== 'string') {
+      return null;
+    }
+    const normalized : string = rawCodecName.trim().toLowerCase();
+    return normalized.length > 0 ? normalized : null;
+  }
+
+  /**
+   * Nyers bitráta mező számmá alakítása.
+   * @param rawBitRate Nyers bitráta.
+   * @returns Bit/s vagy null.
+   */
+  private parseBitRate(rawBitRate : unknown) : number | null {
+    const parsed : number = Number(rawBitRate);
+    if (Number.isFinite(parsed) === false) {
+      return null;
+    }
+    const rounded : number = Math.round(parsed);
+    if (rounded <= 0) {
+      return null;
+    }
+    return rounded;
   }
 
   /**

@@ -19,6 +19,7 @@ import {
   TOKEN_ENTRY_TYPE_UPLOAD,
 } from '../tokens/tokens.constants';
 import { TokensService } from '../tokens/tokens.service';
+import { UserEntity } from '../users/entities/user.entity';
 import { VideoEntity } from './entities/video.entity';
 import { ExportedVideoFile, VideoExportService } from './video-export.service';
 import { SocialTextResult, VideoSocialService } from './video-social.service';
@@ -26,6 +27,7 @@ import { isAllowedMediaExtension, isAllowedMediaMimeType } from './video-file-va
 import { CompleteUploadDto } from './dto/complete-upload.dto';
 import { InitUploadDto } from './dto/init-upload.dto';
 import { UploadChunkDto } from './dto/upload-chunk.dto';
+import { WhisperSettingsDto } from './dto/whisper-settings.dto';
 
 export interface VideoListItem {
   id : number;
@@ -43,6 +45,9 @@ export interface VideoDetails extends VideoListItem {
   mediaUrl : string;
   subtitlePresetId : number | null;
   socialTextCombined : string;
+  whisperModel : string;
+  whisperLanguage : string;
+  wordsPerLine : number;
 }
 
 interface UploadSession {
@@ -77,6 +82,9 @@ export interface InitUploadResponse {
 
 @Injectable()
 export class VideosService {
+  private readonly whisperModel : string = 'turbo';
+  private readonly defaultWhisperLanguage : string = 'hu';
+  private readonly defaultWordsPerLine : number = 7;
   private readonly chunkSizeBytes : number = 10 * 1024 * 1024;
   private readonly uploadSessions : Map<string, UploadSession> = new Map<string, UploadSession>();
   private readonly chunkTempRoot : string = join(process.cwd(), 'data', 'upload-chunks');
@@ -87,6 +95,8 @@ export class VideosService {
     private readonly videosRepository : Repository<VideoEntity>,
     @InjectRepository(SubtitlePresetEntity)
     private readonly presetsRepository : Repository<SubtitlePresetEntity>,
+    @InjectRepository(UserEntity)
+    private readonly usersRepository : Repository<UserEntity>,
     private readonly configService : ConfigService,
     private readonly videoExportService : VideoExportService,
     private readonly videoSocialService : VideoSocialService,
@@ -310,7 +320,7 @@ export class VideosService {
       throw new NotFoundException('A videó nem található.');
     }
 
-    return this.toVideoDetails(video);
+    return await this.toVideoDetails(video);
   }
 
   /**
@@ -340,7 +350,7 @@ export class VideosService {
     const video : VideoEntity = await this.requireOwnedVideo(ownerId, videoId);
     video.isHidden = hidden;
     const savedVideo : VideoEntity = await this.videosRepository.save(video);
-    return this.toVideoDetails(savedVideo);
+    return await this.toVideoDetails(savedVideo);
   }
 
   /**
@@ -354,7 +364,7 @@ export class VideosService {
     const video : VideoEntity = await this.requireOwnedVideo(ownerId, videoId);
     video.subtitleText = subtitleText;
     const savedVideo : VideoEntity = await this.videosRepository.save(video);
-    return this.toVideoDetails(savedVideo);
+    return await this.toVideoDetails(savedVideo);
   }
 
   /**
@@ -378,7 +388,21 @@ export class VideosService {
 
     video.subtitlePresetId = preset.id;
     const savedVideo : VideoEntity = await this.videosRepository.save(video);
-    return this.toVideoDetails(savedVideo);
+    return await this.toVideoDetails(savedVideo);
+  }
+
+  /**
+   * Kompatibilitási whisper settings mentés régi videó-specifikus endpointhoz.
+   * A beállítások user szinten kerülnek mentésre.
+   * @param ownerId User azonosító.
+   * @param videoId Videó azonosító.
+   * @param dto Mentendő whisper beállítások.
+   * @returns Videó részletek user whisper beállításokkal.
+   */
+  public async updateWhisperSettings(ownerId : number, videoId : number, dto : WhisperSettingsDto) : Promise<VideoDetails> {
+    const video : VideoEntity = await this.requireOwnedVideo(ownerId, videoId);
+    await this.saveUserWhisperSettings(ownerId, dto.language, dto.wordsPerLine);
+    return await this.toVideoDetails(video);
   }
 
   /**
@@ -402,7 +426,7 @@ export class VideosService {
     video.listenRequested = true;
     video.processingStatus = 'queued';
     const savedVideo : VideoEntity = await this.videosRepository.save(video);
-    return this.toVideoDetails(savedVideo);
+    return await this.toVideoDetails(savedVideo);
   }
 
   /**
@@ -499,7 +523,8 @@ export class VideosService {
    * @param video Videó entitás.
    * @returns Részletes objektum.
    */
-  private toVideoDetails(video : VideoEntity) : VideoDetails {
+  private async toVideoDetails(video : VideoEntity) : Promise<VideoDetails> {
+    const whisperSettings : { language : string; wordsPerLine : number } = await this.readUserWhisperSettings(video.ownerId);
     return {
       ...this.toVideoListItem(video),
       subtitleText: video.subtitleText,
@@ -507,6 +532,9 @@ export class VideosService {
       mediaUrl: `/api/uploads/${video.storageFileName}`,
       subtitlePresetId: video.subtitlePresetId ?? null,
       socialTextCombined: video.socialTextCombined ?? '',
+      whisperModel: this.whisperModel,
+      whisperLanguage: whisperSettings.language,
+      wordsPerLine: whisperSettings.wordsPerLine,
     };
   }
 
@@ -652,7 +680,49 @@ export class VideosService {
     });
 
     const savedVideo : VideoEntity = await this.videosRepository.save(createdVideo);
-    return this.toVideoDetails(savedVideo);
+    return await this.toVideoDetails(savedVideo);
+  }
+
+  /**
+   * User whisper beállítások kiolvasása default fallbackkel.
+   * @param ownerId User azonosító.
+   * @returns Normalizált whisper nyelv és szószám.
+   */
+  private async readUserWhisperSettings(ownerId : number) : Promise<{ language : string; wordsPerLine : number }> {
+    const owner : UserEntity | null = await this.usersRepository.findOne({ where: { id: ownerId } });
+    if (owner === null) {
+      return {
+        language: this.defaultWhisperLanguage,
+        wordsPerLine: this.defaultWordsPerLine,
+      };
+    }
+
+    const normalizedLanguage : string = owner.whisperLanguage.trim();
+    const safeLanguage : string = normalizedLanguage.length > 0 ? normalizedLanguage : this.defaultWhisperLanguage;
+    const safeWordsPerLine : number = Math.min(30, Math.max(1, Math.round(owner.wordsPerLine)));
+    return {
+      language: safeLanguage,
+      wordsPerLine: safeWordsPerLine,
+    };
+  }
+
+  /**
+   * User whisper beállítások mentése.
+   * @param ownerId User azonosító.
+   * @param language Nyelv kód.
+   * @param wordsPerLine Szó/sor.
+   * @returns Nem ad vissza értéket.
+   */
+  private async saveUserWhisperSettings(ownerId : number, language : string, wordsPerLine : number) : Promise<void> {
+    const owner : UserEntity | null = await this.usersRepository.findOne({ where: { id: ownerId } });
+    if (owner === null) {
+      return;
+    }
+
+    const normalizedLanguage : string = language.trim();
+    owner.whisperLanguage = normalizedLanguage.length > 0 ? normalizedLanguage : this.defaultWhisperLanguage;
+    owner.wordsPerLine = Math.min(30, Math.max(1, Math.round(wordsPerLine)));
+    await this.usersRepository.save(owner);
   }
 
   /**

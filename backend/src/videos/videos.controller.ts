@@ -33,6 +33,7 @@ import { UpdateHiddenDto } from './dto/update-hidden.dto';
 import { UpdateSubtitleDto } from './dto/update-subtitle.dto';
 import { UploadChunkDto } from './dto/upload-chunk.dto';
 import { UpdateVideoPresetDto } from './dto/update-video-preset.dto';
+import { WhisperSettingsDto } from './dto/whisper-settings.dto';
 import { InitUploadResponse, VideoDetails, VideoListItem, VideosService } from './videos.service';
 import { ExportedVideoFile } from './video-export.service';
 import { SocialTextResult } from './video-social.service';
@@ -241,6 +242,24 @@ export class VideosController {
     @Body() dto : UpdateVideoPresetDto,
   ) : Promise<VideoDetails> {
     return await this.videosService.updateVideoPreset(user.id, id, dto.presetId);
+  }
+
+  /**
+   * Kompatibilitási endpoint: user szintű whisper beállítások mentése.
+   * A beállítások már nem videóhoz kötődnek, de a régi kliensek
+   * még ezt az útvonalat hívják.
+   * @param user Bejelentkezett user.
+   * @param id Videó ID.
+   * @param dto Whisper beállítások.
+   * @returns Frissített videó részletek user whisper mezőkkel.
+   */
+  @Patch(':id/whisper-settings')
+  public async updateWhisperSettings(
+    @CurrentUser() user : AuthUser,
+    @Param('id', ParseIntPipe) id : number,
+    @Body() dto : WhisperSettingsDto,
+  ) : Promise<VideoDetails> {
+    return await this.videosService.updateWhisperSettings(user.id, id, dto);
   }
 
   /**

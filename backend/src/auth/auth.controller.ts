@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
@@ -7,6 +7,7 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { UpdateWhisperSettingsDto } from './dto/update-whisper-settings.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -71,5 +72,20 @@ export class AuthController {
   @Get('me')
   public async me(@CurrentUser() user : AuthUser) : Promise<SafeUserResponse> {
     return await this.authService.getProfile(user.id);
+  }
+
+  /**
+   * Bejelentkezett felhasználó whisper beállításainak frissítése.
+   * @param user JWT-ből érkező user.
+   * @param dto Mentendő whisper beállítások.
+   * @returns Frissített publikus profil.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Patch('me/whisper-settings')
+  public async updateWhisperSettings(
+    @CurrentUser() user : AuthUser,
+    @Body() dto : UpdateWhisperSettingsDto,
+  ) : Promise<SafeUserResponse> {
+    return await this.authService.updateWhisperSettings(user.id, dto);
   }
 }

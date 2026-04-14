@@ -8,12 +8,17 @@ import { Repository } from 'typeorm';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { AppModule } from '../app.module';
 import { resolveUploadsDir } from '../common/utils/uploads-dir.util';
+import { UserEntity } from '../users/entities/user.entity';
 import { VideoEntity } from '../videos/entities/video.entity';
 
 interface WhisperResult {
   transcript : string;
   log : string;
 }
+
+const DEFAULT_WHISPER_MODEL : string = 'turbo';
+const DEFAULT_WHISPER_LANGUAGE : string = 'hu';
+const DEFAULT_WORDS_PER_LINE : number = 7;
 
 /**
  * Folyamatos háttér worker, ami a queue-ba tett videókat Whisperrel feldolgozza.
@@ -26,6 +31,7 @@ export async function runWhisperWorkerProcess() : Promise<void> {
 
   const configService : ConfigService = appContext.get(ConfigService);
   const videosRepository : Repository<VideoEntity> = appContext.get<Repository<VideoEntity>>(getRepositoryToken(VideoEntity));
+  const usersRepository : Repository<UserEntity> = appContext.get<Repository<UserEntity>>(getRepositoryToken(UserEntity));
   const uploadsDir : string = resolveUploadsDir(configService.get<string>('UPLOADS_DIR'));
   const pollMs : number = Number(configService.get<string>('WHISPER_QUEUE_POLL_MS') ?? '2500');
   const whisperCommand : string = await resolveWhisperCommand(configService);
@@ -62,13 +68,16 @@ export async function runWhisperWorkerProcess() : Promise<void> {
       queuedVideo.processingStatus = 'pending';
       await videosRepository.save(queuedVideo);
 
+      const owner : UserEntity | null = await usersRepository.findOne({
+        where: { id: queuedVideo.ownerId },
+      });
       const mediaPath : string = join(uploadsDir, queuedVideo.storageFileName);
       const whisperResult : WhisperResult = await runWhisperForVideo({
         whisperCommand,
         mediaPath,
-        model: queuedVideo.whisperModel,
-        language: queuedVideo.whisperLanguage,
-        wordsPerLine: queuedVideo.wordsPerLine,
+        model: DEFAULT_WHISPER_MODEL,
+        language: normalizeWhisperLanguage(owner?.whisperLanguage),
+        wordsPerLine: normalizeWordsPerLine(owner?.wordsPerLine),
       });
 
       queuedVideo.subtitleText = normalizeTranscriptText(whisperResult.transcript);
@@ -85,6 +94,24 @@ export async function runWhisperWorkerProcess() : Promise<void> {
   }
 
   await appContext.close();
+}
+
+function normalizeWhisperLanguage(language : string | undefined | null) : string {
+  if (typeof language !== 'string') {
+    return DEFAULT_WHISPER_LANGUAGE;
+  }
+  const normalized : string = language.trim();
+  if (normalized.length === 0) {
+    return DEFAULT_WHISPER_LANGUAGE;
+  }
+  return normalized;
+}
+
+function normalizeWordsPerLine(wordsPerLine : number | undefined | null) : number {
+  if (Number.isInteger(wordsPerLine) === false || wordsPerLine === null || wordsPerLine === undefined) {
+    return DEFAULT_WORDS_PER_LINE;
+  }
+  return Math.min(30, Math.max(1, wordsPerLine));
 }
 
 /**

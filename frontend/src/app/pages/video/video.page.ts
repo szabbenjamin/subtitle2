@@ -4,8 +4,9 @@ import { ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { Subject, Subscription, debounceTime, distinctUntilChanged, map } from 'rxjs';
-import { SocialTextResult, SubtitlePreset, VideoDetails } from '../../models/api.models';
+import { SocialTextResult, SubtitlePreset, UserProfile, VideoDetails } from '../../models/api.models';
 import { AlertModalService } from '../../services/alert-modal.service';
+import { AuthService } from '../../services/auth.service';
 import { SubtitlePresetService, UpdateSubtitlePresetPayload } from '../../services/subtitle-preset.service';
 import { TokenService } from '../../services/token.service';
 import { VideoService } from '../../services/video.service';
@@ -27,7 +28,7 @@ export class VideoPage implements OnInit, OnDestroy {
   public errorMessage : string = '';
   public listenRequestState : string = '';
   public whisperSaveState : string = '';
-  public whisperModel : string = 'medium';
+  public whisperModel : string = 'turbo';
   public whisperLanguage : string = 'hu';
   public wordsPerLine : number = 7;
 
@@ -48,7 +49,6 @@ export class VideoPage implements OnInit, OnDestroy {
   public marginHorizontalMax : number = 1080;
   public marginVerticalMax : number = 1920;
 
-  public readonly modelOptions : string[] = ['tiny', 'base', 'small', 'medium', 'large-v3', 'turbo'];
   public readonly languageOptions : Array<{ value : string; label : string }> = [
     { value: 'auto', label: 'Automatikus' },
     { value: 'hu', label: 'Magyar' },
@@ -97,6 +97,7 @@ export class VideoPage implements OnInit, OnDestroy {
     private readonly activatedRoute : ActivatedRoute,
     private readonly videoService : VideoService,
     private readonly alertModalService : AlertModalService,
+    private readonly authService : AuthService,
     private readonly subtitlePresetService : SubtitlePresetService,
     private readonly tokenService : TokenService,
     private readonly videoPreviewService : VideoPreviewService,
@@ -109,6 +110,7 @@ export class VideoPage implements OnInit, OnDestroy {
    */
   public ngOnInit() : void {
     this.tokenService.refreshBalance();
+    this.initWhisperSettingsFromProfile();
     this.setupAutosave();
     this.setupWhisperSettingsAutosave();
     this.setupPresetAutosave();
@@ -182,24 +184,35 @@ export class VideoPage implements OnInit, OnDestroy {
       return;
     }
 
-    this.listenRequestState = 'Lehallgatási kérés küldése...';
-    this.videoService
-      .requestListen(this.video.id, {
-        model: this.whisperModel,
+    this.listenRequestState = 'Whisper beállítás mentése...';
+    this.authService
+      .updateWhisperSettings({
         language: this.whisperLanguage,
         wordsPerLine: Math.round(this.wordsPerLine),
       })
       .subscribe({
-        next: (video : VideoDetails) => {
-          this.applyVideoFromServer(video);
-          this.listenRequestState = 'Lehallgatási kérés rögzítve.';
-          this.tokenService.refreshBalance();
-          this.startProcessingPollingIfNeeded();
-          this.changeDetectorRef.detectChanges();
+        next: (profile : UserProfile) => {
+          this.applyWhisperSettingsFromProfile(profile);
+          this.listenRequestState = 'Lehallgatási kérés küldése...';
+          this.videoService.requestListen(this.video!.id).subscribe({
+            next: (video : VideoDetails) => {
+              this.applyVideoFromServer(video);
+              this.listenRequestState = 'Lehallgatási kérés rögzítve.';
+              this.tokenService.refreshBalance();
+              this.startProcessingPollingIfNeeded();
+              this.changeDetectorRef.detectChanges();
+            },
+            error: (error : unknown) => {
+              this.listenRequestState = '';
+              this.errorMessage = this.extractErrorMessage(error, 'A lehallgatás jelölése sikertelen.');
+              this.alertModalService.open(this.errorMessage, 'Hiba');
+              this.changeDetectorRef.detectChanges();
+            },
+          });
         },
-        error: (error : unknown) => {
+        error: () => {
           this.listenRequestState = '';
-          this.errorMessage = this.extractErrorMessage(error, 'A lehallgatás jelölése sikertelen.');
+          this.errorMessage = 'Nem sikerült menteni a Whisper beállításokat.';
           this.alertModalService.open(this.errorMessage, 'Hiba');
           this.changeDetectorRef.detectChanges();
         },
@@ -408,6 +421,46 @@ export class VideoPage implements OnInit, OnDestroy {
   }
 
   /**
+   * Whisper beállítások inicializálása a user profilból.
+   * @returns Nem ad vissza értéket.
+   */
+  private initWhisperSettingsFromProfile() : void {
+    const profile : UserProfile | undefined = this.authService.state().profile;
+    if (profile !== undefined) {
+      this.applyWhisperSettingsFromProfile(profile);
+      return;
+    }
+
+    this.authService.me().subscribe({
+      next: (loadedProfile : UserProfile) => {
+        this.applyWhisperSettingsFromProfile(loadedProfile);
+        this.changeDetectorRef.detectChanges();
+      },
+      error: () => {
+        this.whisperModel = 'turbo';
+      },
+    });
+  }
+
+  /**
+   * User profil whisper mezőinek alkalmazása a nézetállapotra.
+   * @param profile Bejelentkezett user profil.
+   * @returns Nem ad vissza értéket.
+   */
+  private applyWhisperSettingsFromProfile(profile : UserProfile) : void {
+    const safeModel : string =
+      typeof profile.whisperModel === 'string' && profile.whisperModel.trim().length > 0 ? profile.whisperModel.trim() : 'turbo';
+    const safeLanguage : string =
+      typeof profile.whisperLanguage === 'string' && profile.whisperLanguage.trim().length > 0 ? profile.whisperLanguage.trim() : 'hu';
+    const safeWordsPerLine : number =
+      Number.isFinite(profile.wordsPerLine) === true ? Math.min(30, Math.max(1, Math.round(profile.wordsPerLine))) : 7;
+
+    this.whisperModel = safeModel;
+    this.whisperLanguage = safeLanguage;
+    this.wordsPerLine = safeWordsPerLine;
+  }
+
+  /**
    * Autosave stream konfigurálása debounccal.
    * @returns Nem ad vissza értéket.
    */
@@ -441,10 +494,6 @@ export class VideoPage implements OnInit, OnDestroy {
     this.whisperSettingsSubscription = this.whisperSettingsSubject
       .pipe(debounceTime(700))
       .subscribe(() => {
-        if (this.video === undefined) {
-          return;
-        }
-
         if (Number.isFinite(this.wordsPerLine) === false || this.wordsPerLine < 1) {
           this.whisperSaveState = 'Mentési hiba';
           this.errorMessage = 'A soronkénti szószám legalább 1 legyen.';
@@ -452,18 +501,14 @@ export class VideoPage implements OnInit, OnDestroy {
           return;
         }
 
-        this.videoService
-          .updateWhisperSettings(this.video.id, {
-            model: this.whisperModel,
+        this.authService
+          .updateWhisperSettings({
             language: this.whisperLanguage,
             wordsPerLine: Math.round(this.wordsPerLine),
           })
           .subscribe({
-            next: (video : VideoDetails) => {
-              this.video = video;
-              this.whisperModel = video.whisperModel;
-              this.whisperLanguage = video.whisperLanguage;
-              this.wordsPerLine = video.wordsPerLine;
+            next: (profile : UserProfile) => {
+              this.applyWhisperSettingsFromProfile(profile);
               this.whisperSaveState = 'Whisper beállítás mentve';
               this.changeDetectorRef.detectChanges();
             },
@@ -525,9 +570,6 @@ export class VideoPage implements OnInit, OnDestroy {
         this.applyVideoFromServer(video);
         this.subtitleText = video.subtitleText;
         this.rebuildPreviewCues();
-        this.whisperModel = video.whisperModel;
-        this.whisperLanguage = video.whisperLanguage;
-        this.wordsPerLine = video.wordsPerLine;
         this.whisperSaveState = '';
         this.startProcessingPollingIfNeeded();
         this.loadPresets(video.subtitlePresetId);
@@ -751,9 +793,6 @@ export class VideoPage implements OnInit, OnDestroy {
       this.generatedSocialTitle = '';
       this.generatedSocialHashtags = [];
     }
-    this.whisperModel = video.whisperModel;
-    this.whisperLanguage = video.whisperLanguage;
-    this.wordsPerLine = video.wordsPerLine;
   }
 
   /**

@@ -8,6 +8,11 @@ interface AuthState {
   profile ?: UserProfile;
 }
 
+interface UpdateWhisperSettingsPayload {
+  language : string;
+  wordsPerLine : number;
+}
+
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly tokenKey : string = 'subtitle2_token';
@@ -76,6 +81,22 @@ export class AuthService {
    */
   public me() : Observable<UserProfile> {
     return this.httpClient.get<UserProfile>('/api/auth/me').pipe(
+      tap((profile : UserProfile) => {
+        this.state.set({
+          isLoggedIn: true,
+          profile,
+        });
+      }),
+    );
+  }
+
+  /**
+   * Felhasználói whisper beállítások frissítése.
+   * @param payload Új beállítások.
+   * @returns Frissített profil.
+   */
+  public updateWhisperSettings(payload : UpdateWhisperSettingsPayload) : Observable<UserProfile> {
+    return this.httpClient.patch<UserProfile>('/api/auth/me/whisper-settings', payload).pipe(
       tap((profile : UserProfile) => {
         this.state.set({
           isLoggedIn: true,

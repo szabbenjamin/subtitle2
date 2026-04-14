@@ -33,7 +33,6 @@ import { UpdateHiddenDto } from './dto/update-hidden.dto';
 import { UpdateSubtitleDto } from './dto/update-subtitle.dto';
 import { UploadChunkDto } from './dto/upload-chunk.dto';
 import { UpdateVideoPresetDto } from './dto/update-video-preset.dto';
-import { WhisperSettingsDto } from './dto/whisper-settings.dto';
 import { InitUploadResponse, VideoDetails, VideoListItem, VideosService } from './videos.service';
 import { ExportedVideoFile } from './video-export.service';
 import { SocialTextResult } from './video-social.service';
@@ -245,35 +244,14 @@ export class VideosController {
   }
 
   /**
-   * Whisper beállítások mentése.
-   * @param user Bejelentkezett user.
-   * @param id Videó ID.
-   * @param dto Whisper beállítások.
-   * @returns Frissített videó.
-   */
-  @Patch(':id/whisper-settings')
-  public async updateWhisperSettings(
-    @CurrentUser() user : AuthUser,
-    @Param('id', ParseIntPipe) id : number,
-    @Body() dto : WhisperSettingsDto,
-  ) : Promise<VideoDetails> {
-    return await this.videosService.updateWhisperSettings(user.id, id, dto);
-  }
-
-  /**
    * Lehallgatási igény jelölése a háttérfolyamathoz.
    * @param user Bejelentkezett user.
    * @param id Videó ID.
-   * @param dto Whisper paraméterek.
    * @returns Frissített videó.
    */
   @Post(':id/listen-request')
-  public async requestListen(
-    @CurrentUser() user : AuthUser,
-    @Param('id', ParseIntPipe) id : number,
-    @Body() dto : WhisperSettingsDto,
-  ) : Promise<VideoDetails> {
-    return await this.videosService.requestListenWithSettings(user.id, id, dto);
+  public async requestListen(@CurrentUser() user : AuthUser, @Param('id', ParseIntPipe) id : number) : Promise<VideoDetails> {
+    return await this.videosService.requestListen(user.id, id);
   }
 
   /**

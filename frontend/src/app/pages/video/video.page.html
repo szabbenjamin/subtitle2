@@ -32,11 +32,7 @@
         <h4>Whisper beállítások</h4>
         <label>
           Modell
-          <select [(ngModel)]="whisperModel" (ngModelChange)="onWhisperSettingsChange()">
-            @for (model of modelOptions; track model) {
-              <option [value]="model">{{ model }}</option>
-            }
-          </select>
+          <input type="text" [ngModel]="whisperModel" readonly />
         </label>
 
         <label>

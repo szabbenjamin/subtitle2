@@ -14,12 +14,6 @@ interface ChunkUploadContext {
   initResponse : InitUploadResponse;
 }
 
-interface ListenRequestPayload {
-  model : string;
-  language : string;
-  wordsPerLine : number;
-}
-
 export class UploadCancelledError extends Error {
   public constructor(message : string = 'A feltöltés megszakításra került.') {
     super(message);
@@ -138,7 +132,7 @@ export class VideoService {
         throw new UploadCancelledError();
       }
 
-      onProgress(99, 'Feltöltés lezárása...');
+      onProgress(99, 'Feldolgozás folyamatban...');
       const video : VideoDetails = await firstValueFrom(
         this.httpClient.post<VideoDetails>('/api/videos/upload/complete', {
           uploadId: initResponse.uploadId,
@@ -198,18 +192,8 @@ export class VideoService {
    * @param id Videó azonosító.
    * @returns Frissített videó.
    */
-  public requestListen(id : number, payload : ListenRequestPayload) : Observable<VideoDetails> {
-    return this.httpClient.post<VideoDetails>(`/api/videos/${id}/listen-request`, payload);
-  }
-
-  /**
-   * Whisper beállítások mentése egy videóhoz.
-   * @param id Videó azonosító.
-   * @param payload Whisper beállítások.
-   * @returns Frissített videó.
-   */
-  public updateWhisperSettings(id : number, payload : ListenRequestPayload) : Observable<VideoDetails> {
-    return this.httpClient.patch<VideoDetails>(`/api/videos/${id}/whisper-settings`, payload);
+  public requestListen(id : number) : Observable<VideoDetails> {
+    return this.httpClient.post<VideoDetails>(`/api/videos/${id}/listen-request`, {});
   }
 
   /**

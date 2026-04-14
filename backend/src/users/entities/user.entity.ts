@@ -39,6 +39,12 @@ export class UserEntity {
   @Column({ type: 'text', nullable: true })
   public lastTokenTopupMonth ?: string | null;
 
+  @Column({ type: 'text', default: 'hu' })
+  public whisperLanguage !: string;
+
+  @Column({ type: 'integer', default: 7 })
+  public wordsPerLine !: number;
+
   @OneToMany(() => VideoEntity, (video : VideoEntity) => video.owner)
   public videos !: VideoEntity[];
 

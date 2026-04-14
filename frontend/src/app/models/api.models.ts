@@ -7,6 +7,9 @@ export interface UserProfile {
   email : string;
   isEmailVerified : boolean;
   tokenBalance : number;
+  whisperModel : string;
+  whisperLanguage : string;
+  wordsPerLine : number;
   createdAt : string;
 }
 
@@ -26,9 +29,6 @@ export interface VideoDetails extends VideoListItem {
   mediaUrl : string;
   subtitlePresetId : number | null;
   socialTextCombined : string;
-  whisperModel : string;
-  whisperLanguage : string;
-  wordsPerLine : number;
 }
 
 export interface SubtitlePreset {

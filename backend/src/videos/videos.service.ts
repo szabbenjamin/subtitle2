@@ -26,7 +26,6 @@ import { isAllowedMediaExtension, isAllowedMediaMimeType } from './video-file-va
 import { CompleteUploadDto } from './dto/complete-upload.dto';
 import { InitUploadDto } from './dto/init-upload.dto';
 import { UploadChunkDto } from './dto/upload-chunk.dto';
-import { WhisperSettingsDto } from './dto/whisper-settings.dto';
 
 export interface VideoListItem {
   id : number;
@@ -44,9 +43,6 @@ export interface VideoDetails extends VideoListItem {
   mediaUrl : string;
   subtitlePresetId : number | null;
   socialTextCombined : string;
-  whisperModel : string;
-  whisperLanguage : string;
-  wordsPerLine : number;
 }
 
 interface UploadSession {
@@ -410,50 +406,6 @@ export class VideosService {
   }
 
   /**
-   * Whisper beállítások mentése az adott videóhoz.
-   * @param ownerId User azonosító.
-   * @param videoId Videó azonosító.
-   * @param dto Mentendő whisper beállítások.
-   * @returns Módosított videó.
-   */
-  public async updateWhisperSettings(ownerId : number, videoId : number, dto : WhisperSettingsDto) : Promise<VideoDetails> {
-    const video : VideoEntity = await this.requireOwnedVideo(ownerId, videoId);
-    video.whisperModel = dto.model;
-    video.whisperLanguage = dto.language;
-    video.wordsPerLine = dto.wordsPerLine;
-    const savedVideo : VideoEntity = await this.videosRepository.save(video);
-    return this.toVideoDetails(savedVideo);
-  }
-
-  /**
-   * Lehallgatási igény jelölése és a whisper beállítások mentése.
-   * @param ownerId User azonosító.
-   * @param videoId Videó azonosító.
-   * @param dto Lehallgatási beállítások.
-   * @returns Módosított videó.
-   */
-  public async requestListenWithSettings(ownerId : number, videoId : number, dto : WhisperSettingsDto) : Promise<VideoDetails> {
-    const video : VideoEntity = await this.requireOwnedVideo(ownerId, videoId);
-    if (video.processingStatus === 'queued' || video.processingStatus === 'pending') {
-      throw new BadRequestException('A videó már feldolgozás alatt van vagy várólistán van.');
-    }
-    const requiredTokens : number = this.calculateListenTokens(video.durationSeconds);
-    await this.tokensService.charge(
-      ownerId,
-      requiredTokens,
-      TOKEN_ENTRY_TYPE_LISTEN,
-      `Whisper lehallgatás: ${video.originalFileName} (${requiredTokens} token)`,
-    );
-    video.whisperModel = dto.model;
-    video.whisperLanguage = dto.language;
-    video.wordsPerLine = dto.wordsPerLine;
-    video.listenRequested = true;
-    video.processingStatus = 'queued';
-    const savedVideo : VideoEntity = await this.videosRepository.save(video);
-    return this.toVideoDetails(savedVideo);
-  }
-
-  /**
    * SRT videóra égetése ASS stílussal.
    * @param ownerId User azonosító.
    * @param videoId Videó azonosító.
@@ -555,9 +507,6 @@ export class VideosService {
       mediaUrl: `/api/uploads/${video.storageFileName}`,
       subtitlePresetId: video.subtitlePresetId ?? null,
       socialTextCombined: video.socialTextCombined ?? '',
-      whisperModel: video.whisperModel,
-      whisperLanguage: video.whisperLanguage,
-      wordsPerLine: video.wordsPerLine,
     };
   }
 
@@ -697,9 +646,6 @@ export class VideosService {
       isHidden: false,
       listenRequested: false,
       subtitleText: '',
-      whisperModel: 'medium',
-      whisperLanguage: 'hu',
-      wordsPerLine: 7,
       processingStatus: 'idle',
       socialTextCombined: '',
       subtitlePresetId: null,

@@ -1,11 +1,7 @@
 import { Type } from 'class-transformer';
 import { IsInt, IsString, Max, Min, MinLength } from 'class-validator';
 
-export class WhisperSettingsDto {
-  @IsString()
-  @MinLength(1)
-  public model !: string;
-
+export class UpdateWhisperSettingsDto {
   @IsString()
   @MinLength(1)
   public language !: string;

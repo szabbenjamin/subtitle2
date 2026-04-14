@@ -45,15 +45,6 @@ export class VideoEntity {
   @Column({ type: 'text', default: '' })
   public subtitleText !: string;
 
-  @Column({ type: 'text', default: 'medium' })
-  public whisperModel !: string;
-
-  @Column({ type: 'text', default: 'hu' })
-  public whisperLanguage !: string;
-
-  @Column({ type: 'integer', default: 7 })
-  public wordsPerLine !: number;
-
   @Column({ type: 'text', default: 'idle' })
   public processingStatus !: string;
 

@@ -16,6 +16,7 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { UpdateWhisperSettingsDto } from './dto/update-whisper-settings.dto';
 
 export interface AuthTokenResponse {
   accessToken : string;
@@ -26,11 +27,16 @@ export interface SafeUserResponse {
   email : string;
   isEmailVerified : boolean;
   tokenBalance : number;
+  whisperModel : string;
+  whisperLanguage : string;
+  wordsPerLine : number;
   createdAt : Date;
 }
 
 @Injectable()
 export class AuthService {
+  private readonly whisperModel : string = 'turbo';
+
   public constructor(
     @InjectRepository(UserEntity)
     private readonly usersRepository : Repository<UserEntity>,
@@ -64,6 +70,8 @@ export class AuthService {
       isEmailVerified: false,
       emailVerificationToken: verificationToken,
       lastTokenTopupMonth: this.getCurrentMonthKey(),
+      whisperLanguage: 'hu',
+      wordsPerLine: 7,
     });
 
     const savedUser : UserEntity = await this.usersRepository.save(createdUser);
@@ -210,6 +218,25 @@ export class AuthService {
   }
 
   /**
+   * Bejelentkezett user whisper beállításainak frissítése.
+   * @param userId Felhasználó azonosító.
+   * @param dto Mentendő beállítások.
+   * @returns Frissített publikus profil.
+   */
+  public async updateWhisperSettings(userId : number, dto : UpdateWhisperSettingsDto) : Promise<SafeUserResponse> {
+    const user : UserEntity | null = await this.usersRepository.findOne({ where: { id: userId } });
+    if (user === null) {
+      throw new UnauthorizedException('A felhasználó nem található.');
+    }
+
+    const normalizedLanguage : string = dto.language.trim();
+    user.whisperLanguage = normalizedLanguage.length > 0 ? normalizedLanguage : 'hu';
+    user.wordsPerLine = Math.min(30, Math.max(1, Math.round(dto.wordsPerLine)));
+    const savedUser : UserEntity = await this.usersRepository.save(user);
+    return this.toSafeUser(savedUser);
+  }
+
+  /**
    * Belső átalakító publikus user DTO-ra.
    * @param user Teljes user entitás.
    * @returns Publikus user objektum.
@@ -220,6 +247,9 @@ export class AuthService {
       email: user.email,
       isEmailVerified: user.isEmailVerified,
       tokenBalance: user.tokenBalance,
+      whisperModel: this.whisperModel,
+      whisperLanguage: user.whisperLanguage,
+      wordsPerLine: user.wordsPerLine,
       createdAt: user.createdAt,
     };
   }

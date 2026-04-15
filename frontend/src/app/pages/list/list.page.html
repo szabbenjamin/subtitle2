@@ -5,8 +5,10 @@
       <p>A legfrissebb feltöltések legfelül jelennek meg.</p>
     </div>
     <div class="upload-box">
-      <input #picker type="file" accept="video/*,audio/*,.mp4,.mov,.mkv,.webm,.avi,.m4v,.mp3,.wav,.m4a,.aac,.flac,.ogg,.oga,.opus" hidden (change)="onFileSelected($event)" />
-      <button type="button" class="picker-btn" (click)="openPicker()">{{ uploadButtonText() }}</button>
+      @if (isUploading === false) {
+        <input #picker type="file" accept="video/*,audio/*,.mp4,.mov,.mkv,.webm,.avi,.m4v,.mp3,.wav,.m4a,.aac,.flac,.ogg,.oga,.opus" hidden (change)="onFileSelected($event)" />
+        <button type="button" class="picker-btn" (click)="openPicker()">{{ uploadButtonText() }}</button>
+      }
       @if (selectedFile !== undefined && isUploading === false) {
         <button
           type="button"
@@ -18,6 +20,23 @@
       }
       @if (isUploading === true) {
         <button type="button" class="cancel-btn" (click)="cancelUpload()">Megszakítás</button>
+      }
+      @if (isUploading === false) {
+        <input
+          type="url"
+          class="youtube-input"
+          placeholder="YouTube URL (https://...)"
+          [(ngModel)]="youtubeUrl"
+          [disabled]="isUploading"
+        />
+        <button
+          type="button"
+          class="accent youtube-btn"
+          (click)="startYoutubeImport()"
+          [disabled]="canStartYoutubeImport() === false"
+        >
+          YouTube letöltés
+        </button>
       }
     </div>
   </header>
@@ -37,27 +56,49 @@
 
   <section class="panel">
     <h2>Aktív videók</h2>
+    @if (isUploading === true) {
+      <article class="row row-upload-placeholder">
+        <div class="row-main">
+          <div class="thumbnail-wrap thumbnail-wrap-placeholder" aria-hidden="true"></div>
+          <div class="meta">
+            <strong>{{ activeUploadTitle() }}</strong>
+            <span>Állapot: {{ uploadStatusText.length > 0 ? uploadStatusText : 'Feldolgozás folyamatban...' }}</span>
+            <span>Folyamat: {{ uploadProgress }}%</span>
+          </div>
+        </div>
+      </article>
+    }
     @if (isLoadingLists === true) {
       <p class="empty-state">Lista betöltése...</p>
     }
-    @if (isLoadingLists === false && visibleVideos.length === 0) {
+    @if (isLoadingLists === false && visibleVideos.length === 0 && isUploading === false) {
       <p class="empty-state">Még nincs aktív videód.</p>
     }
     @for (video of visibleVideos; track video.id) {
       <article class="row">
-        <div class="meta">
-          <strong>{{ video.originalFileName }}</strong>
-          <span>Hossz: {{ formatDuration(video.durationSeconds) }}</span>
-          <span>Feltöltve: {{ video.createdAt | date:'yyyy.MM.dd HH:mm' }}</span>
-          <span class="processing-line">
-            Állapot: {{ video.processingStatus }}
-            @if (video.processingStatus === 'queued' || video.processingStatus === 'pending') {
-              <span class="inline-loader" aria-hidden="true"></span>
+        <div class="row-main">
+          <div class="thumbnail-wrap">
+            @if (video.thumbnailUrl.length > 0) {
+              <img [src]="video.thumbnailUrl" alt="Videó előnézet" loading="lazy" />
+            } @else {
+              <div class="thumbnail-placeholder">Nincs kép</div>
             }
-          </span>
+          </div>
+          <div class="meta">
+            <strong>{{ video.originalFileName }}</strong>
+            <span>Hossz: {{ formatDuration(video.durationSeconds) }}</span>
+            <span>Feltöltve: {{ video.createdAt | date:'yyyy.MM.dd HH:mm' }}</span>
+            <span class="processing-line">
+              Állapot: {{ video.processingStatus }}
+              @if (video.processingStatus === 'queued' || video.processingStatus === 'pending') {
+                <span class="inline-loader" aria-hidden="true"></span>
+              }
+            </span>
+          </div>
         </div>
         <div class="actions">
           <button type="button" (click)="toggleHidden(video, true)">Elrejtés</button>
+          <button type="button" class="danger" (click)="openDeleteConfirm(video)">Törlés</button>
           <button type="button" class="accent" [routerLink]="['/video', video.id]">Megnyitás</button>
         </div>
       </article>
@@ -74,16 +115,25 @@
       }
       @for (video of hiddenVideos; track video.id) {
         <article class="row">
-          <div class="meta">
-            <strong>{{ video.originalFileName }}</strong>
-            <span>Hossz: {{ formatDuration(video.durationSeconds) }}</span>
-            <span>Feltöltve: {{ video.createdAt | date:'yyyy.MM.dd HH:mm' }}</span>
-            <span class="processing-line">
-              Állapot: {{ video.processingStatus }}
-              @if (video.processingStatus === 'queued' || video.processingStatus === 'pending') {
-                <span class="inline-loader" aria-hidden="true"></span>
+          <div class="row-main">
+            <div class="thumbnail-wrap">
+              @if (video.thumbnailUrl.length > 0) {
+                <img [src]="video.thumbnailUrl" alt="Videó előnézet" loading="lazy" />
+              } @else {
+                <div class="thumbnail-placeholder">Nincs kép</div>
               }
-            </span>
+            </div>
+            <div class="meta">
+              <strong>{{ video.originalFileName }}</strong>
+              <span>Hossz: {{ formatDuration(video.durationSeconds) }}</span>
+              <span>Feltöltve: {{ video.createdAt | date:'yyyy.MM.dd HH:mm' }}</span>
+              <span class="processing-line">
+                Állapot: {{ video.processingStatus }}
+                @if (video.processingStatus === 'queued' || video.processingStatus === 'pending') {
+                  <span class="inline-loader" aria-hidden="true"></span>
+                }
+              </span>
+            </div>
           </div>
           <div class="actions">
             <button type="button" (click)="toggleHidden(video, false)">Visszaállítás</button>
@@ -95,19 +145,24 @@
     }
   </section>
 
-  @if (confirmDeleteVideo !== undefined) {
-    <div class="confirm-backdrop">
-      <section class="confirm-modal" role="dialog" aria-modal="true">
-        <h3>Videó törlése</h3>
-        <p>
-          Biztosan törölni szeretnéd ezt a fájlt?
-          <strong>{{ confirmDeleteVideo.originalFileName }}</strong>
-        </p>
-        <div class="confirm-actions">
-          <button type="button" class="danger" (click)="confirmDeleteVideoNow()">Igen, törlöm</button>
-          <button type="button" (click)="closeDeleteConfirm()">Mégse</button>
-        </div>
-      </section>
-    </div>
-  }
 </section>
+
+@if (confirmDeleteVideo !== undefined) {
+  <div class="confirm-backdrop">
+    <section class="confirm-modal" role="dialog" aria-modal="true">
+      <h3>Végleges törlés</h3>
+      <p>
+        A videó és a hozzá tartozó adatok véglegesen törlésre kerülnek a szerverről.
+        Ez a folyamat nem visszafordítható.
+      </p>
+      <p>
+        Biztosan folytatod?
+        <strong>{{ confirmDeleteVideo.originalFileName }}</strong>
+      </p>
+      <div class="confirm-actions">
+        <button type="button" class="danger" (click)="confirmDeleteVideoNow()">Igen, végleg törlöm</button>
+        <button type="button" (click)="closeDeleteConfirm()">Mégse</button>
+      </div>
+    </section>
+  </div>
+}

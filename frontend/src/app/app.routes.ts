@@ -6,6 +6,7 @@ import { ListPage } from './pages/list/list.page';
 import { LoginPage } from './pages/login/login.page';
 import { TokensPage } from './pages/tokens/tokens.page';
 import { VideoPage } from './pages/video/video.page';
+import { VideoHighlightsPage } from './pages/video-highlights/video-highlights.page';
 
 export const routes : Routes = [
   {
@@ -32,6 +33,11 @@ export const routes : Routes = [
   {
     path: 'video/:id',
     component: VideoPage,
+    canActivate: [authGuard],
+  },
+  {
+    path: 'video/:id/highlights',
+    component: VideoHighlightsPage,
     canActivate: [authGuard],
   },
   {

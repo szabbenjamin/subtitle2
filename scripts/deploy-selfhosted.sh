@@ -2,197 +2,175 @@
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TARGET_USER="${TARGET_USER:-winben}"
-TARGET_HOME="${TARGET_HOME:-/home/$TARGET_USER}"
-BACKEND_DEPLOY_ROOT="${BACKEND_DEPLOY_ROOT:-$TARGET_HOME/subtitle2}"
-FRONTEND_WEB_ROOT="${FRONTEND_WEB_ROOT:-/var/www/html}"
-PM2_APP_NAME="${PM2_APP_NAME:-subtitle2}"
-FRONTEND_BUILD_DIR="${FRONTEND_BUILD_DIR:-}"
-BACKEND_DIR="$BACKEND_DEPLOY_ROOT/backend"
-PROJECT_ROOT_REAL="$(realpath "$PROJECT_ROOT")"
-BACKEND_DEPLOY_ROOT_REAL="$(realpath -m "$BACKEND_DEPLOY_ROOT")"
-IN_PLACE_DEPLOY=false
 
-if [[ "$PROJECT_ROOT_REAL" == "$BACKEND_DEPLOY_ROOT_REAL" ]]; then
-  IN_PLACE_DEPLOY=true
-fi
+TARGET_USER="${TARGET_USER:-$(id -un)}"
+ENV_FILE_PATH_RAW="${ENV_FILE_PATH:-$PROJECT_ROOT/.env.docker}"
+DOCKER_PROJECT_NAME="${DOCKER_PROJECT_NAME:-subtitle2}"
+DOCKER_COMPOSE_FILES_RAW="${DOCKER_COMPOSE_FILES:-docker-compose.yml}"
+DOCKER_PULL_BEFORE_UP="${DOCKER_PULL_BEFORE_UP:-false}"
 
-if id "$TARGET_USER" >/dev/null 2>&1; then
-  TARGET_USER_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
-  if [[ -n "$TARGET_USER_HOME" ]]; then
-    TARGET_HOME="$TARGET_USER_HOME"
-  fi
-fi
-
-if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
-  SUDO="sudo"
+if [[ "$ENV_FILE_PATH_RAW" == /* ]]; then
+  ENV_FILE_PATH="$ENV_FILE_PATH_RAW"
 else
-  SUDO=""
+  ENV_FILE_PATH="$(realpath -m "$PROJECT_ROOT/$ENV_FILE_PATH_RAW")"
 fi
 
-run_as_target_user() {
-  if [[ "$(id -un)" == "$TARGET_USER" ]]; then
-    "$@"
-  else
-    $SUDO -H -u "$TARGET_USER" env \
-      HOME="$TARGET_HOME" \
-      USER="$TARGET_USER" \
-      LOGNAME="$TARGET_USER" \
-      "$@"
-  fi
-}
-
-run_user_shell() {
-  run_as_target_user bash -lc "
-    export HOME='$TARGET_HOME'
-    export NVM_DIR=\"\$HOME/.nvm\"
-    if [[ ! -s \"\$NVM_DIR/nvm.sh\" ]]; then
-      echo 'HIBA: nvm nincs telepítve a cél usernél (\$NVM_DIR/nvm.sh hiányzik).'
-      exit 1
-    fi
-    source \"\$NVM_DIR/nvm.sh\"
-    nvm use 24 >/dev/null
-    NODE_MAJOR=\"\$(node -v | sed -E 's/^v([0-9]+).*/\\1/')\"
-    if [[ \"\$NODE_MAJOR\" != \"24\" ]]; then
-      echo \"HIBA: Kötelező Node 24, aktuális: \$(node -v)\"
-      exit 1
-    fi
-    $*
-  "
-}
-
-resolve_frontend_build_dir() {
-  if [[ -n "$FRONTEND_BUILD_DIR" && -d "$FRONTEND_BUILD_DIR" ]]; then
-    return 0
-  fi
-
-  local preferred="${PROJECT_ROOT}/frontend/dist/frontend/browser"
-  if [[ -d "$preferred" ]]; then
-    FRONTEND_BUILD_DIR="$preferred"
-    return 0
-  fi
-
-  local detected
-  detected="$(find "${PROJECT_ROOT}/frontend/dist" -maxdepth 3 -type d -name browser 2>/dev/null | head -n 1 || true)"
-  if [[ -n "$detected" ]]; then
-    FRONTEND_BUILD_DIR="$detected"
-    return 0
-  fi
-
-  detected="$(find "${PROJECT_ROOT}/frontend/dist" -maxdepth 2 -mindepth 1 -type d 2>/dev/null | head -n 1 || true)"
-  if [[ -n "$detected" ]]; then
-    FRONTEND_BUILD_DIR="$detected"
-    return 0
-  fi
-
-  return 1
-}
-
-mkdir -p "$BACKEND_DEPLOY_ROOT" "$BACKEND_DIR" "$BACKEND_DIR/data" "$BACKEND_DIR/uploads" "$FRONTEND_WEB_ROOT" 2>/dev/null || {
-  if [[ -n "$SUDO" ]]; then
-    $SUDO mkdir -p "$BACKEND_DEPLOY_ROOT" "$BACKEND_DIR" "$BACKEND_DIR/data" "$BACKEND_DIR/uploads" "$FRONTEND_WEB_ROOT"
-  else
-    echo "HIBA: Nincs jogosultság a deploy célkönyvtárakhoz, és passwordless sudo sem elérhető."
-    echo "Futtasd egyszer: bash scripts/install-selfhosted.sh"
-    exit 1
-  fi
-}
-
-if ! run_user_shell "command -v pm2 >/dev/null 2>&1"; then
-  if run_user_shell "command -v npm >/dev/null 2>&1"; then
-    echo "pm2 nem található PATH-ban, globális telepítés indul..."
-    run_user_shell "npm i -g pm2"
-  fi
+if [[ ! -f "$ENV_FILE_PATH" ]]; then
+  echo "HIBA: Env fájl nem található: $ENV_FILE_PATH"
+  echo "Állítsd be az ENV_FILE_PATH változót, vagy hozd létre a .env.docker fájlt."
+  exit 1
 fi
 
-if ! run_user_shell "command -v pm2 >/dev/null 2>&1"; then
-  echo "HIBA: pm2 nincs telepítve vagy nincs PATH-ban."
+if ! command -v docker >/dev/null 2>&1; then
+  echo "HIBA: docker nincs telepítve vagy nincs PATH-ban."
   echo "Futtasd egyszer: bash scripts/install-selfhosted.sh"
   exit 1
 fi
 
-if ! resolve_frontend_build_dir; then
-  echo "HIBA: frontend build könyvtár hiányzik: $FRONTEND_BUILD_DIR"
-  echo "Ellenőrizd, hogy a CI futtatta-e a frontend 'npm run build' lépést."
+if docker compose version >/dev/null 2>&1; then
+  COMPOSE_BIN=(docker compose)
+elif command -v docker-compose >/dev/null 2>&1; then
+  COMPOSE_BIN=(docker-compose)
+else
+  echo "HIBA: docker compose plugin nem érhető el (se 'docker compose', se 'docker-compose')."
+  echo "Futtasd egyszer: bash scripts/install-selfhosted.sh"
   exit 1
 fi
 
-# Megőrzendő lokális fájlok mentése deploy előtt.
-TMP_DIR="$(mktemp -d)"
-if [[ -f "$BACKEND_DEPLOY_ROOT/backend/.env" ]]; then
-  cp "$BACKEND_DEPLOY_ROOT/backend/.env" "$TMP_DIR/.env"
-fi
-if [[ -f "$BACKEND_DEPLOY_ROOT/backend/data/subtitle2.sqlite" ]]; then
-  mkdir -p "$TMP_DIR/data"
-  cp "$BACKEND_DEPLOY_ROOT/backend/data/subtitle2.sqlite" "$TMP_DIR/data/subtitle2.sqlite"
+if ! docker info >/dev/null 2>&1; then
+  echo "HIBA: Docker daemon nem elérhető az aktuális userrel ($(id -un))."
+  echo "Ellenőrizd, hogy fut-e a docker service, és hogy a user tagja-e a docker csoportnak."
+  exit 1
 fi
 
-# Backend forrás deploy.
-if [[ "$IN_PLACE_DEPLOY" == true ]]; then
-  echo "In-place deploy mód: BACKEND_DEPLOY_ROOT megegyezik a repository gyökérrel, rsync kihagyva."
-else
-  if ! rsync -av --delete \
-    --exclude '.git' \
-    --exclude 'node_modules' \
-    --exclude 'backend/data' \
-    --exclude 'backend/uploads' \
-    "$PROJECT_ROOT/" "$BACKEND_DEPLOY_ROOT/"; then
-    if [[ -n "$SUDO" ]]; then
-      $SUDO rsync -av --delete \
-        --exclude '.git' \
-        --exclude 'node_modules' \
-        --exclude 'backend/data' \
-        --exclude 'backend/uploads' \
-        "$PROJECT_ROOT/" "$BACKEND_DEPLOY_ROOT/"
-    else
-      echo "HIBA: Backend rsync sikertelen jogosultsági probléma miatt."
-      exit 23
-    fi
+trim() {
+  local value="$1"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "$value"
+}
+
+strip_quotes() {
+  local value="$1"
+  if [[ "$value" =~ ^\".*\"$ ]]; then
+    value="${value:1:${#value}-2}"
+  elif [[ "$value" =~ ^\'.*\'$ ]]; then
+    value="${value:1:${#value}-2}"
   fi
-fi
+  printf '%s' "$value"
+}
 
-# Frontend static build deploy a webszerver document rootba.
-if ! rsync -av --delete \
-  --exclude '.well-known' \
-  "$FRONTEND_BUILD_DIR/" "$FRONTEND_WEB_ROOT/"; then
-  if [[ -n "$SUDO" ]]; then
-    $SUDO rsync -av --delete \
-      --exclude '.well-known' \
-      "$FRONTEND_BUILD_DIR/" "$FRONTEND_WEB_ROOT/"
+read_env_value() {
+  local key="$1"
+  local fallback="$2"
+  local line
+  line="$(grep -E "^${key}=" "$ENV_FILE_PATH" | tail -n 1 || true)"
+  if [[ -z "$line" ]]; then
+    printf '%s' "$fallback"
+    return
+  fi
+
+  local value="${line#*=}"
+  value="${value%$'\r'}"
+  value="$(trim "$value")"
+  value="$(strip_quotes "$value")"
+
+  if [[ -z "$value" ]]; then
+    printf '%s' "$fallback"
   else
-    echo "HIBA: Frontend rsync sikertelen jogosultsági probléma miatt."
-    echo "Adj írásjogot a runner usernek a $FRONTEND_WEB_ROOT könyvtárra, vagy engedélyezz passwordless sudo-t."
-    exit 23
+    printf '%s' "$value"
   fi
+}
+
+to_abs_path() {
+  local path_value="$1"
+  if [[ "$path_value" == /* ]]; then
+    printf '%s' "$path_value"
+  else
+    printf '%s' "$(realpath -m "$PROJECT_ROOT/$path_value")"
+  fi
+}
+
+mkdir_safe() {
+  local dir="$1"
+  if mkdir -p "$dir" >/dev/null 2>&1; then
+    return
+  fi
+
+  if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+    sudo mkdir -p "$dir"
+    sudo chown -R "$TARGET_USER":"$TARGET_USER" "$dir" || true
+    return
+  fi
+
+  echo "HIBA: Nem sikerült létrehozni a könyvtárat: $dir"
+  echo "Adj írásjogot a runner usernek, vagy engedélyezz passwordless sudo-t."
+  exit 1
+}
+
+MYSQL_DATA_DIR="$(to_abs_path "$(read_env_value MYSQL_DATA_DIR ./docker-data/mysql)")"
+BACKEND_UPLOADS_DIR="$(to_abs_path "$(read_env_value BACKEND_UPLOADS_DIR ./docker-data/uploads)")"
+BACKEND_DATA_DIR="$(to_abs_path "$(read_env_value BACKEND_DATA_DIR ./docker-data/data)")"
+WHISPER_CACHE_DIR="$(to_abs_path "$(read_env_value WHISPER_CACHE_DIR ./docker-data/whisper-cache)")"
+
+mkdir_safe "$MYSQL_DATA_DIR"
+mkdir_safe "$BACKEND_UPLOADS_DIR"
+mkdir_safe "$BACKEND_DATA_DIR"
+mkdir_safe "$WHISPER_CACHE_DIR"
+
+compose_file_tokens="${DOCKER_COMPOSE_FILES_RAW//,/ }"
+read -r -a compose_files <<< "$compose_file_tokens"
+if [[ ${#compose_files[@]} -eq 0 ]]; then
+  compose_files=(docker-compose.yml)
 fi
 
-# Megőrzött fájlok visszaállítása.
-if [[ -f "$TMP_DIR/.env" ]]; then
-  cp "$TMP_DIR/.env" "$BACKEND_DEPLOY_ROOT/backend/.env"
-fi
-if [[ -f "$TMP_DIR/data/subtitle2.sqlite" ]]; then
-  mkdir -p "$BACKEND_DEPLOY_ROOT/backend/data"
-  cp "$TMP_DIR/data/subtitle2.sqlite" "$BACKEND_DEPLOY_ROOT/backend/data/subtitle2.sqlite"
-fi
+compose_args=()
+for compose_file in "${compose_files[@]}"; do
+  compose_file_trimmed="$(trim "$compose_file")"
+  if [[ -z "$compose_file_trimmed" ]]; then
+    continue
+  fi
 
-cd "$BACKEND_DIR"
-run_user_shell "cd '$BACKEND_DIR' && npm ci --omit=dev"
+  if [[ "$compose_file_trimmed" == /* ]]; then
+    compose_file_path="$compose_file_trimmed"
+  else
+    compose_file_path="$(realpath -m "$PROJECT_ROOT/$compose_file_trimmed")"
+  fi
 
-if [[ ! -f "$BACKEND_DIR/dist/main.js" ]]; then
-  echo "HIBA: A backend build hiányzik (dist/main.js)."
-  echo "Ellenőrizd, hogy a CI futtatta-e a 'npm run build' lépést backend mappában."
+  if [[ ! -f "$compose_file_path" ]]; then
+    echo "HIBA: Compose fájl nem található: $compose_file_path"
+    exit 1
+  fi
+
+  compose_args+=( -f "$compose_file_path" )
+done
+
+if [[ ${#compose_args[@]} -eq 0 ]]; then
+  echo "HIBA: Nincs érvényes compose fájl a DOCKER_COMPOSE_FILES változóban."
   exit 1
 fi
 
-NODE_BIN="$(run_user_shell 'command -v node')"
-if run_user_shell "pm2 describe '$PM2_APP_NAME' >/dev/null 2>&1"; then
-  run_user_shell "pm2 restart '$PM2_APP_NAME' --update-env"
-else
-  run_user_shell "pm2 start '$BACKEND_DIR/dist/main.js' \
-    --name "$PM2_APP_NAME" \
-    --cwd '$BACKEND_DIR' \
-    --interpreter '$NODE_BIN'"
-fi
-run_user_shell "pm2 save"
+echo "Docker deploy indul"
+echo "- project: $DOCKER_PROJECT_NAME"
+echo "- env: $ENV_FILE_PATH"
+echo "- compose: ${compose_files[*]}"
+echo "- mysql data: $MYSQL_DATA_DIR"
+echo "- uploads: $BACKEND_UPLOADS_DIR"
+echo "- backend data: $BACKEND_DATA_DIR"
+echo "- whisper cache: $WHISPER_CACHE_DIR"
 
-rm -rf "$TMP_DIR"
+compose_base=("${COMPOSE_BIN[@]}" --project-name "$DOCKER_PROJECT_NAME" --env-file "$ENV_FILE_PATH" "${compose_args[@]}")
+
+(
+  cd "$PROJECT_ROOT"
+  "${compose_base[@]}" config -q
+
+  if [[ "${DOCKER_PULL_BEFORE_UP,,}" == "true" ]]; then
+    "${compose_base[@]}" pull || true
+  fi
+
+  "${compose_base[@]}" up --build -d --remove-orphans
+  "${compose_base[@]}" ps
+)
+
+echo "Docker deploy kész."

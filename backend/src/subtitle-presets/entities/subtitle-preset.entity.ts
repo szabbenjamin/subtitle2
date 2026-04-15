@@ -23,25 +23,25 @@ export class SubtitlePresetEntity {
   @JoinColumn({ name: 'ownerId' })
   public owner !: UserEntity;
 
-  @Column({ type: 'text' })
+  @Column({ type: 'varchar', length: 120 })
   public name !: string;
 
-  @Column({ type: 'text', default: 'Arial' })
+  @Column({ type: 'varchar', length: 120, default: 'Arial' })
   public fontName !: string;
 
   @Column({ type: 'integer', default: 56 })
   public fontSize !: number;
 
-  @Column({ type: 'text', default: '#FFFFFF' })
+  @Column({ type: 'varchar', length: 16, default: '#FFFFFF' })
   public primaryColour !: string;
 
-  @Column({ type: 'text', default: '#000000' })
+  @Column({ type: 'varchar', length: 16, default: '#000000' })
   public secondaryColour !: string;
 
-  @Column({ type: 'text', default: '#000000' })
+  @Column({ type: 'varchar', length: 16, default: '#000000' })
   public outlineColour !: string;
 
-  @Column({ type: 'text', default: '#000000' })
+  @Column({ type: 'varchar', length: 16, default: '#000000' })
   public backColour !: string;
 
   @Column({ type: 'boolean', default: false })
@@ -89,7 +89,7 @@ export class SubtitlePresetEntity {
   @Column({ type: 'integer', default: 30 })
   public marginV !: number;
 
-  @Column({ type: 'text', default: 'UTF-8' })
+  @Column({ type: 'varchar', length: 32, default: 'UTF-8' })
   public encoding !: string;
 
   @CreateDateColumn()

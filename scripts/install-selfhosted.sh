@@ -1,25 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Self-hosted telepítő script backend+frontend deploy környezethez.
-# Cél:
-# - Node 24 + npm
-# - pm2 + rsync
-# - Whisper (python venv + openai-whisper)
-# - backend deploy root: /home/winben/subtitle2
-# - frontend web root: /var/www/html
-# - opcionális GitHub Actions runner konfiguráció
+PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 TARGET_USER="${TARGET_USER:-winben}"
 TARGET_HOME="${TARGET_HOME:-/home/$TARGET_USER}"
-BACKEND_DEPLOY_ROOT="${BACKEND_DEPLOY_ROOT:-}"
-FRONTEND_WEB_ROOT="${FRONTEND_WEB_ROOT:-/var/www/html}"
-PM2_APP_NAME="${PM2_APP_NAME:-subtitle2}"
-RUNNER_BASE_DIR="${RUNNER_BASE_DIR:-}"
+RUNNER_BASE_DIR="${RUNNER_BASE_DIR:-$TARGET_HOME/actions-runner}"
 RUNNER_LABELS="${RUNNER_LABELS:-self-hosted,linux,winben}"
-WHISPER_DIR="${WHISPER_DIR:-$TARGET_HOME/whisper}"
-WHISPER_VENV_PATH="${WHISPER_VENV_PATH:-$WHISPER_DIR/.venv}"
-WHISPER_COMMAND="${WHISPER_COMMAND:-$WHISPER_VENV_PATH/bin/whisper}"
+ENV_FILE_PATH_RAW="${ENV_FILE_PATH:-$PROJECT_ROOT/.env.docker}"
 
 if id "$TARGET_USER" >/dev/null 2>&1; then
   TARGET_USER_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
@@ -28,105 +16,156 @@ if id "$TARGET_USER" >/dev/null 2>&1; then
   fi
 fi
 
-BACKEND_DEPLOY_ROOT="${BACKEND_DEPLOY_ROOT:-$TARGET_HOME/subtitle2}"
-RUNNER_BASE_DIR="${RUNNER_BASE_DIR:-$TARGET_HOME/actions-runner}"
-BACKEND_DIR="$BACKEND_DEPLOY_ROOT/backend"
-
-if command -v sudo >/dev/null 2>&1; then
-  SUDO="sudo"
+if [[ "$ENV_FILE_PATH_RAW" == /* ]]; then
+  ENV_FILE_PATH="$ENV_FILE_PATH_RAW"
 else
-  SUDO=""
+  ENV_FILE_PATH="$(realpath -m "$PROJECT_ROOT/$ENV_FILE_PATH_RAW")"
 fi
+
+if [[ "$(id -u)" -eq 0 ]]; then
+  ROOT_PREFIX=()
+elif command -v sudo >/dev/null 2>&1; then
+  ROOT_PREFIX=(sudo)
+else
+  echo "HIBA: root vagy sudo jogosultság szükséges a telepítéshez."
+  exit 1
+fi
+
+run_root() {
+  "${ROOT_PREFIX[@]}" "$@"
+}
 
 run_as_target_user() {
   if [[ "$(id -un)" == "$TARGET_USER" ]]; then
     "$@"
+    return
+  fi
+
+  if command -v sudo >/dev/null 2>&1; then
+    sudo -H -u "$TARGET_USER" env HOME="$TARGET_HOME" USER="$TARGET_USER" LOGNAME="$TARGET_USER" "$@"
+    return
+  fi
+
+  echo "HIBA: Nem lehet a target userrel futtatni parancsot (sudo nem elérhető)."
+  exit 1
+}
+
+trim() {
+  local value="$1"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "$value"
+}
+
+strip_quotes() {
+  local value="$1"
+  if [[ "$value" =~ ^\".*\"$ ]]; then
+    value="${value:1:${#value}-2}"
+  elif [[ "$value" =~ ^\'.*\'$ ]]; then
+    value="${value:1:${#value}-2}"
+  fi
+  printf '%s' "$value"
+}
+
+read_env_value() {
+  local key="$1"
+  local fallback="$2"
+
+  if [[ ! -f "$ENV_FILE_PATH" ]]; then
+    printf '%s' "$fallback"
+    return
+  fi
+
+  local line
+  line="$(grep -E "^${key}=" "$ENV_FILE_PATH" | tail -n 1 || true)"
+  if [[ -z "$line" ]]; then
+    printf '%s' "$fallback"
+    return
+  fi
+
+  local value="${line#*=}"
+  value="${value%$'\r'}"
+  value="$(trim "$value")"
+  value="$(strip_quotes "$value")"
+
+  if [[ -z "$value" ]]; then
+    printf '%s' "$fallback"
   else
-    $SUDO -H -u "$TARGET_USER" env \
-      HOME="$TARGET_HOME" \
-      USER="$TARGET_USER" \
-      LOGNAME="$TARGET_USER" \
-      "$@"
+    printf '%s' "$value"
   fi
 }
 
-install_system_packages() {
-  echo "[1/7] Rendszercsomagok telepítése..."
-  $SUDO apt-get update -y
-  $SUDO apt-get install -y curl ca-certificates tar rsync build-essential python3 python3-venv python3-pip ffmpeg
+to_abs_path() {
+  local path_value="$1"
+  if [[ "$path_value" == /* ]]; then
+    printf '%s' "$path_value"
+  else
+    printf '%s' "$(realpath -m "$PROJECT_ROOT/$path_value")"
+  fi
 }
 
-install_nvm_node24() {
-  echo "[2/7] nvm + Node 24 ellenőrzés/telepítés..."
-  run_as_target_user bash -lc '
-  export NVM_DIR="$HOME/.nvm"
+install_base_packages() {
+  echo "[1/5] Rendszercsomagok telepítése..."
+  run_root apt-get update -y
+  run_root apt-get install -y ca-certificates curl gnupg lsb-release git rsync
+}
 
-  if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
-    curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+install_docker_engine() {
+  echo "[2/5] Docker Engine + Compose plugin telepítése..."
+
+  run_root install -m 0755 -d /etc/apt/keyrings
+  if [[ ! -f /etc/apt/keyrings/docker.gpg ]]; then
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | run_root gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  fi
+  run_root chmod a+r /etc/apt/keyrings/docker.gpg
+
+  local arch codename
+  arch="$(dpkg --print-architecture)"
+  codename="$(. /etc/os-release && printf '%s' "$VERSION_CODENAME")"
+
+  echo "deb [arch=${arch} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu ${codename} stable" \
+    | run_root tee /etc/apt/sources.list.d/docker.list >/dev/null
+
+  run_root apt-get update -y
+  run_root apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  run_root systemctl enable --now docker
+
+  docker --version
+  docker compose version
+}
+
+configure_docker_user() {
+  echo "[3/5] Docker jogosultság beállítása userre..."
+
+  if ! id "$TARGET_USER" >/dev/null 2>&1; then
+    echo "HIBA: target user nem található: $TARGET_USER"
+    exit 1
   fi
 
-  # shellcheck disable=SC1090
-  source "$NVM_DIR/nvm.sh"
-  nvm install 24
-  nvm use 24
-
-  if ! grep -q "NVM_DIR" "$HOME/.bashrc"; then
-    cat >> "$HOME/.bashrc" <<'"'"'BASHRC_EOF'"'"'
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-BASHRC_EOF
-  fi
-
-  echo "Node verzió: $(node -v)"
-  echo "npm verzió: $(npm -v)"
-  '
+  run_root usermod -aG docker "$TARGET_USER"
+  echo "A(z) $TARGET_USER user hozzáadva a docker csoporthoz."
 }
 
-install_pm2() {
-  echo "[3/7] pm2 telepítése..."
-  run_as_target_user bash -lc '
-  export NVM_DIR="$HOME/.nvm"
-  # shellcheck disable=SC1090
-  source "$NVM_DIR/nvm.sh"
-  nvm use 24 >/dev/null
-  npm i -g pm2
-  pm2 --version
-  '
-}
+prepare_bind_dirs() {
+  echo "[4/5] Docker bind mount mappák előkészítése..."
 
-prepare_deploy_dirs() {
-  echo "[4/7] Deploy könyvtárak előkészítése..."
-  $SUDO mkdir -p "$BACKEND_DIR/data"
-  $SUDO mkdir -p "$BACKEND_DIR/uploads"
-  $SUDO mkdir -p "$FRONTEND_WEB_ROOT"
+  local mysql_data_dir backend_uploads_dir backend_data_dir whisper_cache_dir
+  mysql_data_dir="$(to_abs_path "$(read_env_value MYSQL_DATA_DIR ./docker-data/mysql)")"
+  backend_uploads_dir="$(to_abs_path "$(read_env_value BACKEND_UPLOADS_DIR ./docker-data/uploads)")"
+  backend_data_dir="$(to_abs_path "$(read_env_value BACKEND_DATA_DIR ./docker-data/data)")"
+  whisper_cache_dir="$(to_abs_path "$(read_env_value WHISPER_CACHE_DIR ./docker-data/whisper-cache)")"
 
-  $SUDO chown -R "$TARGET_USER":"$TARGET_USER" "$BACKEND_DEPLOY_ROOT"
-  $SUDO chown -R "$TARGET_USER":"$TARGET_USER" "$FRONTEND_WEB_ROOT"
+  run_root mkdir -p "$mysql_data_dir" "$backend_uploads_dir" "$backend_data_dir" "$whisper_cache_dir"
+  run_root chown -R "$TARGET_USER":"$TARGET_USER" "$mysql_data_dir" "$backend_uploads_dir" "$backend_data_dir" "$whisper_cache_dir"
 
-  echo "Backend deploy root: $BACKEND_DEPLOY_ROOT"
-  echo "Backend dir: $BACKEND_DIR"
-  echo "Frontend web root: $FRONTEND_WEB_ROOT"
-}
-
-configure_pm2_startup() {
-  echo "[5/7] PM2 startup konfiguráció..."
-  run_as_target_user bash -lc '
-  pm2 startup systemd -u "'"$TARGET_USER"'" --hp "'"$TARGET_HOME"'" >/tmp/pm2-startup.txt || true
-
-  if grep -q "sudo" /tmp/pm2-startup.txt; then
-    STARTUP_CMD="$(grep -Eo "sudo .*pm2 startup.*" /tmp/pm2-startup.txt | head -n1 || true)"
-    if [[ -n "$STARTUP_CMD" ]]; then
-      eval "$STARTUP_CMD"
-    fi
-  fi
-
-  pm2 save || true
-  '
-  echo "PM2 app név ajánlottan: $PM2_APP_NAME"
+  echo "MYSQL_DATA_DIR=$mysql_data_dir"
+  echo "BACKEND_UPLOADS_DIR=$backend_uploads_dir"
+  echo "BACKEND_DATA_DIR=$backend_data_dir"
+  echo "WHISPER_CACHE_DIR=$whisper_cache_dir"
 }
 
 configure_runner_optional() {
-  echo "[6/7] Opcionális GitHub Actions runner konfiguráció..."
+  echo "[5/5] Opcionális GitHub Actions runner konfiguráció..."
 
   if [[ -z "${RUNNER_URL:-}" || -z "${RUNNER_TOKEN:-}" ]]; then
     echo "RUNNER_URL vagy RUNNER_TOKEN nincs megadva, runner konfiguráció kihagyva."
@@ -135,74 +174,49 @@ configure_runner_optional() {
     return
   fi
 
-  mkdir -p "$RUNNER_BASE_DIR"
-  cd "$RUNNER_BASE_DIR"
+  run_root mkdir -p "$RUNNER_BASE_DIR"
+  run_root chown -R "$TARGET_USER":"$TARGET_USER" "$RUNNER_BASE_DIR"
 
-  if [[ ! -f "./config.sh" ]]; then
-    curl -fsSL -o actions-runner-linux-x64.tar.gz \
-      "https://github.com/actions/runner/releases/download/v2.325.0/actions-runner-linux-x64-2.325.0.tar.gz"
-    tar xzf ./actions-runner-linux-x64.tar.gz
-    rm -f ./actions-runner-linux-x64.tar.gz
-  fi
-
-  if [[ -f ".runner" ]]; then
-    echo "Runner már konfigurálva, service újraindítás..."
-  else
-    ./config.sh \
-      --url "$RUNNER_URL" \
-      --token "$RUNNER_TOKEN" \
-      --name "${RUNNER_NAME:-$(hostname)-winben}" \
-      --labels "$RUNNER_LABELS" \
-      --unattended \
-      --replace
-  fi
-
-  $SUDO ./svc.sh install "$TARGET_USER"
-  $SUDO ./svc.sh start
-  echo "Runner service státusz:"
-  $SUDO ./svc.sh status || true
-}
-
-install_whisper() {
-  echo "[7/7] Whisper telepítése..."
   run_as_target_user bash -lc '
-  set -euo pipefail
+    set -euo pipefail
+    cd "'"$RUNNER_BASE_DIR"'"
 
-  mkdir -p "'"$WHISPER_DIR"'"
-  cd "'"$WHISPER_DIR"'"
+    if [[ ! -f "./config.sh" ]]; then
+      curl -fsSL -o actions-runner-linux-x64.tar.gz \
+        "https://github.com/actions/runner/releases/download/v2.325.0/actions-runner-linux-x64-2.325.0.tar.gz"
+      tar xzf ./actions-runner-linux-x64.tar.gz
+      rm -f ./actions-runner-linux-x64.tar.gz
+    fi
 
-  if [[ ! -d "'"$WHISPER_VENV_PATH"'" ]]; then
-    python3 -m venv "'"$WHISPER_VENV_PATH"'"
-  fi
-
-  source "'"$WHISPER_VENV_PATH"'/bin/activate"
-  pip install --upgrade pip setuptools wheel
-  pip install --upgrade openai-whisper
-
-  "'"$WHISPER_COMMAND"'" --help >/dev/null
-  echo "Whisper telepítve: '"$WHISPER_COMMAND"'"
+    if [[ ! -f ".runner" ]]; then
+      ./config.sh \
+        --url "'"${RUNNER_URL}"'" \
+        --token "'"${RUNNER_TOKEN}"'" \
+        --name "'"${RUNNER_NAME:-$(hostname)-$TARGET_USER}"'" \
+        --labels "'"$RUNNER_LABELS"'" \
+        --unattended \
+        --replace
+    fi
   '
+
+  run_root bash -lc "cd '$RUNNER_BASE_DIR' && ./svc.sh install '$TARGET_USER'"
+  run_root bash -lc "cd '$RUNNER_BASE_DIR' && ./svc.sh start"
+  run_root bash -lc "cd '$RUNNER_BASE_DIR' && ./svc.sh status || true"
 }
 
 main() {
-  install_system_packages
-  install_nvm_node24
-  install_pm2
-  prepare_deploy_dirs
-  configure_pm2_startup
+  install_base_packages
+  install_docker_engine
+  configure_docker_user
+  prepare_bind_dirs
   configure_runner_optional
-  install_whisper
 
   echo
   echo "Kész. Következő lépések:"
-  echo "1) Állítsd be a backend .env fájlt: $BACKEND_DIR/.env"
-  echo "2) Ellenőrizd, hogy a workflow env-jei passzolnak:"
-  echo "   BACKEND_DEPLOY_ROOT=$BACKEND_DEPLOY_ROOT"
-  echo "   FRONTEND_WEB_ROOT=$FRONTEND_WEB_ROOT"
-  echo "   PM2_APP_NAME=$PM2_APP_NAME"
-  echo "   TARGET_USER=$TARGET_USER"
-  echo "3) Backend .env-ben állítsd be a whisper parancsot:"
-  echo "   WHISPER_COMMAND=$WHISPER_COMMAND"
+  echo "1) Töltsd ki a .env.docker fájlt (vagy CI-ben ENV_DOCKER secretként add meg)."
+  echo "2) A docker csoport tagság miatt jelentkezz ki/be a $TARGET_USER userrel, vagy indíts új shellt."
+  echo "3) Helyben indítás: docker compose up --build -d"
+  echo "4) CI deploy script: bash scripts/deploy-selfhosted.sh"
 }
 
 main "$@"

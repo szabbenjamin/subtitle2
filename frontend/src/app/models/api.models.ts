@@ -21,6 +21,7 @@ export interface VideoListItem {
   createdAt : string;
   isHidden : boolean;
   processingStatus : string;
+  thumbnailUrl : string;
 }
 
 export interface VideoDetails extends VideoListItem {
@@ -29,6 +30,62 @@ export interface VideoDetails extends VideoListItem {
   mediaUrl : string;
   subtitlePresetId : number | null;
   socialTextCombined : string;
+  whisperModel : string;
+  whisperLanguage : string;
+  wordsPerLine : number;
+}
+
+export type HighlightMode = 'balanced' | 'funny' | 'emotional' | 'informative' | 'dynamic';
+
+export interface HighlightFeatureReason {
+  key : string;
+  label : string;
+  value : number;
+  normalized : number;
+  weight : number;
+  contribution : number;
+  explanation : string;
+}
+
+export interface VideoHighlightClip {
+  id : number;
+  analysisId : number;
+  rank : number;
+  score : number;
+  startSeconds : number;
+  endSeconds : number;
+  durationSeconds : number;
+  screenshotUrl : string;
+  transcriptSnippet : string;
+  reasonSummary : string;
+  reasons : HighlightFeatureReason[];
+  feedbackStatus : string;
+  feedbackNote : string;
+  createdAt : string;
+}
+
+export interface VideoHighlightAnalysis {
+  id : number;
+  videoId : number;
+  mode : HighlightMode;
+  status : string;
+  stageCode : string;
+  stageMessage : string;
+  progressPercent : number;
+  requiresWhisper : boolean;
+  errorMessage : string;
+  createdAt : string;
+  updatedAt : string;
+  completedAt : string | null;
+  clips : VideoHighlightClip[];
+}
+
+export interface HighlightExportedVideo {
+  id : number;
+  originalFileName : string;
+  mediaUrl : string;
+  durationSeconds : number;
+  createdAt : string;
 }
 
 export interface SubtitlePreset {

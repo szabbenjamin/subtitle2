@@ -3,9 +3,10 @@
   "version": "0.0.0",
   "scripts": {
     "ng": "ng",
-    "start": "ng serve --proxy-config proxy.conf.json",
+    "start": "ng serve --proxy-config proxy.conf.json --poll 1000",
+    "start:docker": "ng serve --host 0.0.0.0 --port 4200 --proxy-config proxy.docker.conf.json --poll 1000",
     "build": "ng build",
-    "watch": "ng build --watch --configuration development",
+    "watch": "ng build --watch --configuration development --poll 1000",
     "test": "ng test"
   },
   "private": true,

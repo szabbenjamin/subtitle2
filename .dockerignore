@@ -1,0 +1,16 @@
+.git
+.gitignore
+.github
+node_modules
+**/node_modules
+frontend/dist
+backend/dist
+backend/uploads
+backend/data
+docker-data
+coverage
+npm-debug.log
+yarn-error.log
+.env
+backend/.env
+frontend/.env

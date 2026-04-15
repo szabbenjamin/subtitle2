@@ -51,6 +51,41 @@ export class MailService {
   }
 
   /**
+   * Napi emlékeztető küldése az 1 hónapnál régebbi videókról.
+   * @param email Címzett email címe.
+   * @param oldVideoCount Régi videók darabszáma.
+   * @param chargedToday Ma levont token mennyiség.
+   * @param unchargedToday Ma fel nem számolt régi videók száma (pl. nincs elég token).
+   * @returns Nem ad vissza értéket.
+   */
+  public async sendOldVideoStorageReminderEmail(params : {
+    email : string;
+    oldVideoCount : number;
+    chargedToday : number;
+    unchargedToday : number;
+  }) : Promise<void> {
+    const chargedLine : string =
+      params.chargedToday > 0
+        ? `A mai napi régi-videó tárolási díj levonása: ${params.chargedToday} token.`
+        : 'A mai napi régi-videó tárolási díjból most nem történt levonás.';
+    const unchargedLine : string =
+      params.unchargedToday > 0
+        ? `További ${params.unchargedToday} régi videóra ma már nem tudtunk tokent levonni.`
+        : 'Minden érintett régi videóra megtörtént a mai napi levonás.';
+
+    await this.sendMail(
+      params.email,
+      'subtitle2 - Régi videók napi token díja',
+      [
+        `Jelenleg ${params.oldVideoCount} darab, 1 hónapnál régebbi videód van fenn a rendszerben.`,
+        chargedLine,
+        unchargedLine,
+        'Ha ezt nem szeretnéd, töröld a régi videókat a listaoldalon.',
+      ].join('\n'),
+    );
+  }
+
+  /**
    * Alacsony szintű emailküldés közös metódusa.
    * @param email Címzett.
    * @param subject Tárgy.

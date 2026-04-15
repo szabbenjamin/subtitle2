@@ -29,12 +29,18 @@ import type { AuthUser } from '../common/interfaces/auth-user.interface';
 import { resolveUploadsDir } from '../common/utils/uploads-dir.util';
 import { CompleteUploadDto } from './dto/complete-upload.dto';
 import { InitUploadDto } from './dto/init-upload.dto';
+import { StartYoutubeImportDto } from './dto/start-youtube-import.dto';
 import { UpdateHiddenDto } from './dto/update-hidden.dto';
 import { UpdateSubtitleDto } from './dto/update-subtitle.dto';
 import { UploadChunkDto } from './dto/upload-chunk.dto';
 import { UpdateVideoPresetDto } from './dto/update-video-preset.dto';
 import { WhisperSettingsDto } from './dto/whisper-settings.dto';
-import { InitUploadResponse, VideoDetails, VideoListItem, VideosService } from './videos.service';
+import { StartHighlightAnalysisDto } from './dto/start-highlight-analysis.dto';
+import { UpdateHighlightFeedbackDto } from './dto/update-highlight-feedback.dto';
+import { ExportHighlightClipsDto } from './dto/export-highlight-clips.dto';
+import { VideosService } from './videos.service';
+import type { InitUploadResponse, VideoDetails, VideoListItem, YoutubeImportStartResponse, YoutubeImportStatusResponse } from './videos.service';
+import { HighlightExportedVideoDto, VideoHighlightAnalysisDto, VideoHighlightClipDto, VideoHighlightsService } from './video-highlights.service';
 import { ExportedVideoFile } from './video-export.service';
 import { SocialTextResult } from './video-social.service';
 import { isAllowedMediaExtension, isAllowedMediaMimeType } from './video-file-validation.util';
@@ -42,7 +48,10 @@ import { isAllowedMediaExtension, isAllowedMediaMimeType } from './video-file-va
 @Controller('videos')
 @UseGuards(JwtAuthGuard)
 export class VideosController {
-  public constructor(private readonly videosService : VideosService) {}
+  public constructor(
+    private readonly videosService : VideosService,
+    private readonly videoHighlightsService : VideoHighlightsService,
+  ) {}
 
   /**
    * Videólista lekérése látható vagy rejtett állapot szerint.
@@ -57,6 +66,48 @@ export class VideosController {
   ) : Promise<VideoListItem[]> {
     const hiddenValue : boolean = hidden === true;
     return await this.videosService.list(user.id, hiddenValue);
+  }
+
+  /**
+   * YouTube import indítása yt-dlp segítségével.
+   * @param user Bejelentkezett user.
+   * @param dto YouTube URL.
+   * @returns Import indítás válasz.
+   */
+  @Post('upload/youtube/start')
+  public async startYoutubeImport(
+    @CurrentUser() user : AuthUser,
+    @Body() dto : StartYoutubeImportDto,
+  ) : Promise<YoutubeImportStartResponse> {
+    return await this.videosService.startYoutubeImport(user.id, dto.url);
+  }
+
+  /**
+   * YouTube import aktuális státusz lekérése.
+   * @param user Bejelentkezett user.
+   * @param importId Import azonosító.
+   * @returns Import státusz.
+   */
+  @Get('upload/youtube/:importId')
+  public getYoutubeImportStatus(
+    @CurrentUser() user : AuthUser,
+    @Param('importId') importId : string,
+  ) : YoutubeImportStatusResponse {
+    return this.videosService.getYoutubeImportStatus(user.id, importId);
+  }
+
+  /**
+   * YouTube import megszakítása.
+   * @param user Bejelentkezett user.
+   * @param importId Import azonosító.
+   * @returns Siker jelzés.
+   */
+  @Post('upload/youtube/:importId/cancel')
+  public cancelYoutubeImport(
+    @CurrentUser() user : AuthUser,
+    @Param('importId') importId : string,
+  ) : { success : boolean } {
+    return this.videosService.cancelYoutubeImport(user.id, importId);
   }
 
   /**
@@ -305,5 +356,75 @@ export class VideosController {
     @Param('id', ParseIntPipe) id : number,
   ) : Promise<SocialTextResult> {
     return await this.videosService.generateSocialText(user.id, id);
+  }
+
+  /**
+   * Legutóbbi highlight elemzés lekérése.
+   * @param user Bejelentkezett user.
+   * @param id Videó azonosító.
+   * @returns Elemzés vagy null.
+   */
+  @Get(':id/highlights')
+  public async getLatestHighlightsAnalysis(
+    @CurrentUser() user : AuthUser,
+    @Param('id', ParseIntPipe) id : number,
+  ) : Promise<VideoHighlightAnalysisDto | null> {
+    return await this.videoHighlightsService.getLatestAnalysis(user.id, id);
+  }
+
+  /**
+   * Új highlight elemzés indítása.
+   * @param user Bejelentkezett user.
+   * @param id Videó azonosító.
+   * @param dto Elemzési mód.
+   * @returns Queuezott elemzés.
+   */
+  @Post(':id/highlights/analyze')
+  public async startHighlightsAnalysis(
+    @CurrentUser() user : AuthUser,
+    @Param('id', ParseIntPipe) id : number,
+    @Body() dto : StartHighlightAnalysisDto,
+  ) : Promise<VideoHighlightAnalysisDto> {
+    return await this.videoHighlightsService.startAnalysis(user.id, id, dto.mode);
+  }
+
+  /**
+   * Kiválasztott highlight klip indoklására visszajelzés.
+   * @param user Bejelentkezett user.
+   * @param id Videó azonosító.
+   * @param clipId Klip azonosító.
+   * @param dto Visszajelzés payload.
+   * @returns Frissített klip adatai.
+   */
+  @Patch(':id/highlights/clips/:clipId/feedback')
+  public async updateHighlightClipFeedback(
+    @CurrentUser() user : AuthUser,
+    @Param('id', ParseIntPipe) id : number,
+    @Param('clipId', ParseIntPipe) clipId : number,
+    @Body() dto : UpdateHighlightFeedbackDto,
+  ) : Promise<VideoHighlightClipDto> {
+    return await this.videoHighlightsService.updateClipFeedback({
+      ownerId: user.id,
+      videoId: id,
+      clipId,
+      isAccurate: dto.isAccurate,
+      note: dto.note,
+    });
+  }
+
+  /**
+   * Kiválasztott highlight klipek külön fájlokba exportálása.
+   * @param user Bejelentkezett user.
+   * @param id Videó azonosító.
+   * @param dto Kijelölt klip lista.
+   * @returns Létrejött új videók.
+   */
+  @Post(':id/highlights/export')
+  public async exportHighlightClips(
+    @CurrentUser() user : AuthUser,
+    @Param('id', ParseIntPipe) id : number,
+    @Body() dto : ExportHighlightClipsDto,
+  ) : Promise<HighlightExportedVideoDto[]> {
+    return await this.videoHighlightsService.exportClips(user.id, id, dto);
   }
 }

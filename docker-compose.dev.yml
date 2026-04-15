@@ -1,0 +1,121 @@
+services:
+  db:
+    image: mysql:8.4
+    container_name: subtitle2-db-dev
+    restart: unless-stopped
+    env_file:
+      - ./.env.docker
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-subtitle2}
+      MYSQL_USER: ${MYSQL_USER:-subtitle2}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-subtitle2pass}
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', '127.0.0.1', '-uroot', '-p${MYSQL_ROOT_PASSWORD:-root}']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    volumes:
+      - '${MYSQL_DATA_DIR:-./docker-data/mysql}:/var/lib/mysql'
+    networks:
+      - subtitle2-dev-net
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.dev
+      args:
+        HIGHLIGHT_AI_MODEL: ${HIGHLIGHT_AI_MODEL:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}
+    container_name: subtitle2-backend-dev
+    restart: unless-stopped
+    env_file:
+      - ./.env.docker
+    depends_on:
+      db:
+        condition: service_healthy
+    command: npm run start:dev
+    environment:
+      NODE_ENV: development
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "300"
+      PORT: ${BACKEND_PORT:-3000}
+      DB_SYNCHRONIZE: ${DB_SYNCHRONIZE:-true}
+      MYSQL_HOST: db
+      MYSQL_PORT: ${MYSQL_PORT:-3306}
+      MYSQL_USER: ${MYSQL_USER:-subtitle2}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-subtitle2pass}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-subtitle2}
+      MYSQL_CHARSET: ${MYSQL_CHARSET:-utf8mb4}
+      MYSQL_TIMEZONE: ${MYSQL_TIMEZONE:-Z}
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-me}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost}
+      UPLOADS_DIR: /app/backend/uploads
+      WHISPER_COMMAND: /opt/whisper/.venv/bin/whisper
+      YTDLP_COMMAND: /opt/whisper/.venv/bin/yt-dlp
+      HIGHLIGHT_AI_ENABLED: ${HIGHLIGHT_AI_ENABLED:-true}
+      HIGHLIGHT_AI_PYTHON_COMMAND: /opt/whisper/.venv/bin/python
+      HIGHLIGHT_AI_SCRIPT_PATH: /app/backend/scripts/highlight-rerank.py
+      HIGHLIGHT_AI_TIMEOUT_MS: ${HIGHLIGHT_AI_TIMEOUT_MS:-90000}
+      HIGHLIGHT_AI_BLEND: ${HIGHLIGHT_AI_BLEND:-0.8}
+      HIGHLIGHT_AI_MODEL: ${HIGHLIGHT_AI_MODEL:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}
+      WHISPER_QUEUE_POLL_MS: ${WHISPER_QUEUE_POLL_MS:-2500}
+      WHISPER_WORKER_AUTOSTART: ${WHISPER_WORKER_AUTOSTART:-true}
+      DB_BUSY_RETRY_ATTEMPTS: ${DB_BUSY_RETRY_ATTEMPTS:-6}
+      DB_BUSY_RETRY_DELAY_MS: ${DB_BUSY_RETRY_DELAY_MS:-450}
+      UPLOADS_ORPHAN_SWEEP_INTERVAL_MS: ${UPLOADS_ORPHAN_SWEEP_INTERVAL_MS:-3600000}
+      UPLOADS_ORPHAN_MIN_AGE_MINUTES: ${UPLOADS_ORPHAN_MIN_AGE_MINUTES:-360}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-3.5-turbo}
+      OPENAI_TIMEOUT_MS: ${OPENAI_TIMEOUT_MS:-25000}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-subtitle2 <noreply@subtitle2.local>}
+      FORCE_FREE_PORT_ON_START: "false"
+      XDG_CACHE_HOME: /opt/whisper/cache
+      HF_HOME: /opt/whisper/cache/hf
+      TRANSFORMERS_CACHE: /opt/whisper/cache/hf
+      SENTENCE_TRANSFORMERS_HOME: /opt/whisper/cache/sentence-transformers
+    ports:
+      - '${BACKEND_PORT:-3000}:3000'
+    volumes:
+      - ./backend:/app/backend
+      - backend_node_modules:/app/backend/node_modules
+      - '${BACKEND_UPLOADS_DIR:-./docker-data/uploads}:/app/backend/uploads'
+      - '${BACKEND_DATA_DIR:-./docker-data/data}:/app/backend/data'
+      - '${WHISPER_CACHE_DIR:-./docker-data/whisper-cache}:/opt/whisper/cache'
+    networks:
+      - subtitle2-dev-net
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile.dev
+    container_name: subtitle2-frontend-dev
+    restart: unless-stopped
+    depends_on:
+      - backend
+    command: npm run start:docker
+    environment:
+      NODE_ENV: development
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "300"
+      WATCHPACK_POLLING: "true"
+    ports:
+      - '${FRONTEND_PORT:-80}:4200'
+    volumes:
+      - ./frontend:/app/frontend
+      - frontend_node_modules:/app/frontend/node_modules
+    networks:
+      - subtitle2-dev-net
+
+networks:
+  subtitle2-dev-net:
+    driver: bridge
+
+volumes:
+  backend_node_modules:
+  frontend_node_modules:

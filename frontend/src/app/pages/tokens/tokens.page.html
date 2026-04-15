@@ -23,7 +23,7 @@
           </tr>
         </thead>
         <tbody>
-          @for (row of rows; track row.id) {
+          @for (row of visibleRows(); track row.id) {
             <tr>
               <td>{{ row.createdAt | date:'yyyy.MM.dd HH:mm' }}</td>
               <td>{{ row.type }}</td>
@@ -35,6 +35,11 @@
         </tbody>
       </table>
     </div>
+    @if (canShowMoreRows() === true) {
+      <div class="more-wrap">
+        <button type="button" class="more-button" (click)="showMoreRows()">További megjelenítése</button>
+      </div>
+    }
   }
 
   <section class="costs-block">

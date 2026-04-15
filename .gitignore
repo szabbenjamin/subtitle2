@@ -75,6 +75,7 @@ backend/data/*
 !backend/data/.gitkeep
 backend/uploads/*
 !backend/uploads/.gitkeep
+docker-data/
 
 # Frontend lokális konfiguráció
 frontend/src/app/config/config.ts

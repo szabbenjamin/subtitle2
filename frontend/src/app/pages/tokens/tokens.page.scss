@@ -75,6 +75,29 @@ thead th {
   font-size: 1.05rem;
 }
 
+.more-wrap {
+  display: flex;
+  justify-content: center;
+}
+
+.more-button {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.58rem 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  color: #fff;
+  background: linear-gradient(135deg, #2b8bd8, #145fb4);
+  box-shadow: 0 8px 18px rgba(22, 95, 180, 0.28);
+  transition: transform 140ms ease, box-shadow 140ms ease, filter 140ms ease;
+}
+
+.more-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(22, 95, 180, 0.34);
+  filter: brightness(1.03);
+}
+
 @keyframes tokens-in {
   from {
     opacity: 0;

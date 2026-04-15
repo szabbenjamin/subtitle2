@@ -8,6 +8,8 @@ import {
 } from 'typeorm';
 import { SubtitlePresetEntity } from '../../subtitle-presets/entities/subtitle-preset.entity';
 import { TokenHistoryEntity } from '../../tokens/entities/token-history.entity';
+import { VideoHighlightAnalysisEntity } from '../../videos/entities/video-highlight-analysis.entity';
+import { VideoHighlightClipEntity } from '../../videos/entities/video-highlight-clip.entity';
 import { VideoEntity } from '../../videos/entities/video.entity';
 
 @Entity({ name: 'users' })
@@ -39,7 +41,7 @@ export class UserEntity {
   @Column({ type: 'text', nullable: true })
   public lastTokenTopupMonth ?: string | null;
 
-  @Column({ type: 'text', default: 'hu' })
+  @Column({ type: 'varchar', length: 16, default: 'hu' })
   public whisperLanguage !: string;
 
   @Column({ type: 'integer', default: 7 })
@@ -53,6 +55,12 @@ export class UserEntity {
 
   @OneToMany(() => TokenHistoryEntity, (entry : TokenHistoryEntity) => entry.user)
   public tokenHistory !: TokenHistoryEntity[];
+
+  @OneToMany(() => VideoHighlightAnalysisEntity, (analysis : VideoHighlightAnalysisEntity) => analysis.owner)
+  public videoHighlightAnalyses !: VideoHighlightAnalysisEntity[];
+
+  @OneToMany(() => VideoHighlightClipEntity, (clip : VideoHighlightClipEntity) => clip.owner)
+  public videoHighlightClips !: VideoHighlightClipEntity[];
 
   @CreateDateColumn()
   public createdAt !: Date;

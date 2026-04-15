@@ -64,6 +64,9 @@
         },
         "serve": {
           "builder": "@angular/build:dev-server",
+          "options": {
+            "poll": 1000
+          },
           "configurations": {
             "production": {
               "buildTarget": "frontend:build:production"

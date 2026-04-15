@@ -1,7 +1,15 @@
 import { HttpClient, HttpEvent, HttpEventType, HttpResponse } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { catchError, firstValueFrom, Observable, of, Subscription, tap } from 'rxjs';
-import { SocialTextResult, VideoDetails, VideoListItem } from '../models/api.models';
+import {
+  HighlightExportedVideo,
+  HighlightMode,
+  SocialTextResult,
+  VideoDetails,
+  VideoHighlightAnalysis,
+  VideoHighlightClip,
+  VideoListItem,
+} from '../models/api.models';
 
 interface InitUploadResponse {
   uploadId : string;
@@ -9,9 +17,45 @@ interface InitUploadResponse {
   totalChunks : number;
 }
 
+interface YoutubeImportStartResponse {
+  importId : string;
+  displayTitle : string;
+  status : 'queued' | 'downloading' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  progressPercent : number;
+  stageMessage : string;
+}
+
+interface YoutubeImportStatusResponse {
+  id : string;
+  displayTitle : string;
+  status : 'queued' | 'downloading' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  progressPercent : number;
+  stageMessage : string;
+  errorMessage : string;
+  videoId : number | null;
+  updatedAt : string;
+}
+
 interface ChunkUploadContext {
   file : File;
   initResponse : InitUploadResponse;
+}
+
+interface StartHighlightAnalysisPayload {
+  mode : HighlightMode;
+}
+
+interface UpdateHighlightFeedbackPayload {
+  isAccurate : boolean;
+  note ?: string;
+}
+
+interface ExportHighlightClipsPayload {
+  clips : Array<{
+    clipId : number;
+    startSeconds ?: number;
+    endSeconds ?: number;
+  }>;
 }
 
 export class UploadCancelledError extends Error {
@@ -149,6 +193,85 @@ export class VideoService {
   }
 
   /**
+   * YouTube URL alapú import indítása, pollolt progress visszajelzéssel.
+   * @param url YouTube URL.
+   * @param onProgress Progress callback (százalék, státusz).
+   * @returns Megszakítható import handle.
+   */
+  public startYoutubeImport(
+    url : string,
+    onProgress : (percent : number, status : string, displayTitle ?: string) => void,
+  ) : ChunkUploadHandle {
+    const cancelState : { value : boolean } = { value: false };
+    let importId : string | null = null;
+    let didCancelRequest : boolean = false;
+
+    const cancel = () : void => {
+      cancelState.value = true;
+      if (importId === null || didCancelRequest === true) {
+        return;
+      }
+      didCancelRequest = true;
+      void this.cancelYoutubeImport(importId);
+    };
+
+    const promise : Promise<VideoDetails> = (async () : Promise<VideoDetails> => {
+      const started : YoutubeImportStartResponse = await firstValueFrom(
+        this.httpClient.post<YoutubeImportStartResponse>('/api/videos/upload/youtube/start', {
+          url,
+        }),
+      );
+      importId = started.importId;
+      onProgress(
+        Math.max(0, Math.min(99, Math.round(started.progressPercent))),
+        started.stageMessage,
+        started.displayTitle,
+      );
+
+      while (true) {
+        if (cancelState.value === true) {
+          throw new UploadCancelledError('A YouTube letöltés megszakításra került.');
+        }
+
+        await this.wait(1200);
+        const status : YoutubeImportStatusResponse = await firstValueFrom(
+          this.httpClient.get<YoutubeImportStatusResponse>(`/api/videos/upload/youtube/${started.importId}`),
+        );
+
+        const safePercent : number = Math.max(0, Math.min(99, Math.round(status.progressPercent)));
+        onProgress(safePercent, status.stageMessage, status.displayTitle);
+
+        if (status.status === 'completed' && status.videoId !== null) {
+          onProgress(99, 'Feldolgozás lezárása...');
+          const video : VideoDetails = await firstValueFrom(this.getById(status.videoId));
+          onProgress(100, 'Letöltés kész');
+          return video;
+        }
+
+        if (status.status === 'failed') {
+          throw new Error(
+            status.errorMessage.length > 0
+              ? status.errorMessage
+              : 'A YouTube letöltés hibával leállt.',
+          );
+        }
+
+        if (status.status === 'cancelled') {
+          throw new UploadCancelledError('A YouTube letöltés megszakításra került.');
+        }
+      }
+    })().catch(async (error : unknown) : Promise<never> => {
+      if (cancelState.value === true && importId !== null && didCancelRequest === false) {
+        didCancelRequest = true;
+        await this.cancelYoutubeImport(importId);
+      }
+      throw error;
+    });
+
+    return { cancel, promise };
+  }
+
+  /**
    * Rejtett állapot frissítése.
    * @param id Videó azonosító.
    * @param hidden Új érték.
@@ -212,6 +335,51 @@ export class VideoService {
    */
   public generateSocialText(id : number) : Observable<SocialTextResult> {
     return this.httpClient.post<SocialTextResult>(`/api/videos/${id}/social-text`, {});
+  }
+
+  /**
+   * Legutóbbi highlight elemzés lekérése.
+   * @param id Videó azonosító.
+   * @returns Elemzés állapot vagy null.
+   */
+  public getLatestHighlightAnalysis(id : number) : Observable<VideoHighlightAnalysis | null> {
+    return this.httpClient.get<VideoHighlightAnalysis | null>(`/api/videos/${id}/highlights`);
+  }
+
+  /**
+   * Highlight elemzés indítása.
+   * @param id Videó azonosító.
+   * @param mode Elemzési mód.
+   * @returns Queuezott elemzés.
+   */
+  public startHighlightAnalysis(id : number, mode : HighlightMode) : Observable<VideoHighlightAnalysis> {
+    const payload : StartHighlightAnalysisPayload = { mode };
+    return this.httpClient.post<VideoHighlightAnalysis>(`/api/videos/${id}/highlights/analyze`, payload);
+  }
+
+  /**
+   * Highlight klip indoklás-visszajelzés mentése.
+   * @param videoId Videó azonosító.
+   * @param clipId Klip azonosító.
+   * @param payload Visszajelzés adatok.
+   * @returns Frissített klip.
+   */
+  public updateHighlightClipFeedback(
+    videoId : number,
+    clipId : number,
+    payload : UpdateHighlightFeedbackPayload,
+  ) : Observable<VideoHighlightClip> {
+    return this.httpClient.patch<VideoHighlightClip>(`/api/videos/${videoId}/highlights/clips/${clipId}/feedback`, payload);
+  }
+
+  /**
+   * Kijelölt highlight klipek exportja külön videóként.
+   * @param videoId Forrás videó azonosító.
+   * @param payload Kijelölt klipek és opcionális vágási határok.
+   * @returns Létrejött videók.
+   */
+  public exportHighlightClips(videoId : number, payload : ExportHighlightClipsPayload) : Observable<HighlightExportedVideo[]> {
+    return this.httpClient.post<HighlightExportedVideo[]>(`/api/videos/${videoId}/highlights/export`, payload);
   }
 
   /**
@@ -297,5 +465,25 @@ export class VideoService {
     formData.append('chunkIndex', String(chunkIndex));
     formData.append('totalChunks', String(context.initResponse.totalChunks));
     return formData;
+  }
+
+  /**
+   * YouTube import megszakítás kérés küldése backend felé.
+   * @param importId Import azonosító.
+   */
+  private async cancelYoutubeImport(importId : string) : Promise<void> {
+    await firstValueFrom(
+      this.httpClient.post(`/api/videos/upload/youtube/${importId}/cancel`, {}).pipe(
+        catchError(() => {
+          return of(null);
+        }),
+      ),
+    );
+  }
+
+  private async wait(ms : number) : Promise<void> {
+    await new Promise<void>((resolve : () => void) => {
+      setTimeout(resolve, ms);
+    });
   }
 }

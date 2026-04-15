@@ -15,6 +15,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Prepare Docker env file
+        env:
+          ENV_DOCKER: ${{ secrets.ENV_DOCKER }}
+        run: |
+          if [ -z "${ENV_DOCKER}" ]; then
+            echo "HIBA: hiányzó ENV_DOCKER secret."
+            echo "Add meg a teljes .env.docker tartalmat az ENV_DOCKER secretben."
+            exit 1
+          fi
+          printf '%s\n' "${ENV_DOCKER}" > .env.docker
+          chmod 600 .env.docker
+          ln -sfn .env.docker .env
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -57,9 +70,9 @@ jobs:
       - name: Deploy
         env:
           TARGET_USER: winben
-          BACKEND_DEPLOY_ROOT: /home/winben/subtitle2
-          FRONTEND_WEB_ROOT: /var/www/html
-          PM2_APP_NAME: subtitle2
+          ENV_FILE_PATH: .env.docker
+          DOCKER_PROJECT_NAME: subtitle2
+          DOCKER_COMPOSE_FILES: docker-compose.yml
         run: bash scripts/deploy-selfhosted.sh
 
       - name: Purge Cloudflare Cache

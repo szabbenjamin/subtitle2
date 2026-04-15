@@ -3,6 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
+import { RouterLink } from '@angular/router';
 import { Subject, Subscription, debounceTime, distinctUntilChanged, map } from 'rxjs';
 import { SocialTextResult, SubtitlePreset, UserProfile, VideoDetails } from '../../models/api.models';
 import { AlertModalService } from '../../services/alert-modal.service';
@@ -16,7 +17,7 @@ import { SubtitleCue, SubtitlePresetForm } from './video.types';
 @Component({
   selector: 'app-video-page',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './video.page.html',
   styleUrl: './video.page.scss',
 })
@@ -1005,5 +1006,12 @@ export class VideoPage implements OnInit, OnDestroy {
    */
   public hasSubtitleSource() : boolean {
     return this.subtitleText.trim().length > 0;
+  }
+
+  /**
+   * Highlights gomb elérhetősége: legalább 4 perces videóknál.
+   */
+  public canOpenHighlights() : boolean {
+    return this.video !== undefined && this.video.durationSeconds >= 240;
   }
 }

@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectorRef, Component, ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { forkJoin } from 'rxjs';
 import { VideoDetails, VideoListItem } from '../../models/api.models';
@@ -11,7 +12,7 @@ import { ChunkUploadHandle, UploadCancelledError, VideoService } from '../../ser
 @Component({
   selector: 'app-list-page',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './list.page.html',
   styleUrl: './list.page.scss',
 })
@@ -22,8 +23,11 @@ export class ListPage implements OnInit, OnDestroy {
   public visibleVideos : VideoListItem[] = [];
   public hiddenVideos : VideoListItem[] = [];
   public selectedFile ?: File;
+  public youtubeUrl : string = '';
   public uploadProgress : number = 0;
   public uploadStatusText : string = '';
+  public activeUploadDisplayTitle : string = '';
+  public activeUploadKind : 'file' | 'youtube' | null = null;
   public isUploading : boolean = false;
   public hiddenOpen : boolean = false;
   public isLoadingLists : boolean = false;
@@ -123,11 +127,13 @@ export class ListPage implements OnInit, OnDestroy {
       return;
     }
 
+    const selectedFile : File = this.selectedFile;
     this.isUploading = true;
+    this.activeUploadKind = 'file';
+    this.activeUploadDisplayTitle = selectedFile.name;
     this.errorMessage = '';
     this.uploadProgress = 0;
     this.uploadStatusText = 'Feltöltés indítása...';
-    const selectedFile : File = this.selectedFile;
 
     this.uploadHandle = this.videoService.startChunkedUpload(selectedFile, (percent : number, status : string) => {
       this.uploadProgress = percent;
@@ -153,6 +159,50 @@ export class ListPage implements OnInit, OnDestroy {
   }
 
   /**
+   * YouTube URL alapú letöltés és import indítása.
+   */
+  public startYoutubeImport() : void {
+    const trimmedUrl : string = this.youtubeUrl.trim();
+    if (trimmedUrl.length === 0) {
+      return;
+    }
+
+    this.isUploading = true;
+    this.activeUploadKind = 'youtube';
+    this.activeUploadDisplayTitle = this.deriveYoutubePlaceholderTitle(trimmedUrl);
+    this.errorMessage = '';
+    this.uploadProgress = 0;
+    this.uploadStatusText = 'YouTube letöltés indítása...';
+
+    this.uploadHandle = this.videoService.startYoutubeImport(trimmedUrl, (percent : number, status : string, displayTitle ?: string) => {
+      this.uploadProgress = percent;
+      this.uploadStatusText = status;
+      if (typeof displayTitle === 'string' && displayTitle.trim().length > 0) {
+        this.activeUploadDisplayTitle = displayTitle.trim();
+      }
+      this.changeDetectorRef.detectChanges();
+    });
+
+    void this.uploadHandle.promise
+      .then((video : VideoDetails) => {
+        this.finishUpload('YouTube import kész');
+        this.youtubeUrl = '';
+        this.tokenService.refreshBalance();
+        void this.router.navigate(['/video', video.id]);
+      })
+      .catch((error : unknown) => {
+        if (error instanceof UploadCancelledError) {
+          this.finishUpload('YouTube letöltés megszakítva');
+        } else {
+          this.finishUpload('YouTube letöltési hiba');
+          this.errorMessage = this.extractErrorMessage(error);
+          this.alertModalService.open(this.errorMessage, 'Hiba');
+          this.changeDetectorRef.detectChanges();
+        }
+      });
+  }
+
+  /**
    * Folyamatban lévő feltöltés megszakítása.
    * @returns Nem ad vissza értéket.
    */
@@ -166,8 +216,34 @@ export class ListPage implements OnInit, OnDestroy {
     this.uploadHandle = undefined;
     this.uploadProgress = 0;
     this.uploadStatusText = 'Feltöltés megszakítva';
+    this.activeUploadDisplayTitle = '';
+    this.activeUploadKind = null;
     this.changeDetectorRef.detectChanges();
     handle.cancel();
+  }
+
+  /**
+   * Aktív placeholder sor címe.
+   */
+  public activeUploadTitle() : string {
+    if (this.activeUploadDisplayTitle.trim().length > 0) {
+      return this.activeUploadDisplayTitle.trim();
+    }
+
+    if (this.activeUploadKind === 'youtube') {
+      return 'YouTube videó';
+    }
+    if (this.activeUploadKind === 'file') {
+      return 'Új feltöltés';
+    }
+    return 'Feldolgozás';
+  }
+
+  /**
+   * YouTube import indítható-e.
+   */
+  public canStartYoutubeImport() : boolean {
+    return this.isUploading === false && this.youtubeUrl.trim().length > 0;
   }
 
   /**
@@ -277,6 +353,8 @@ export class ListPage implements OnInit, OnDestroy {
     this.isUploading = false;
     this.uploadHandle = undefined;
     this.uploadStatusText = statusText;
+    this.activeUploadDisplayTitle = '';
+    this.activeUploadKind = null;
     this.changeDetectorRef.detectChanges();
   }
 
@@ -295,6 +373,10 @@ export class ListPage implements OnInit, OnDestroy {
       if (typeof payload === 'string' && payload.length > 0) {
         return payload;
       }
+    }
+
+    if (error instanceof Error && error.message.trim().length > 0) {
+      return error.message.trim();
     }
 
     return 'A művelet nem hajtható végre. Kérlek, vedd fel a kapcsolatot a szoftver üzemeltetőjével.';
@@ -317,5 +399,26 @@ export class ListPage implements OnInit, OnDestroy {
 
     const extension : string = name.slice(dotIndex);
     return this.allowedMediaExtensions.has(extension);
+  }
+
+  /**
+   * YouTube URL-ből kezdeti, felhasználóbarát cím készítése.
+   */
+  private deriveYoutubePlaceholderTitle(url : string) : string {
+    try {
+      const parsed : URL = new URL(url);
+      const videoId : string = parsed.searchParams.get('v')?.trim() ?? '';
+      if (videoId.length > 0) {
+        return `YouTube: ${videoId}`;
+      }
+      const pathname : string = parsed.pathname.trim().replace(/^\/+/, '');
+      if (pathname.length > 0) {
+        return `YouTube: ${pathname}`;
+      }
+    } catch {
+      // Szándékosan csendes fallback.
+    }
+
+    return 'YouTube videó';
   }
 }

@@ -1,0 +1,259 @@
+@if (isLoading === true) {
+  <section class="state-box">
+    <p>Highlights felület betöltése...</p>
+  </section>
+} @else if (video === undefined) {
+  <section class="state-box error">
+    <p>{{ errorMessage.length > 0 ? errorMessage : 'A videó nem érhető el.' }}</p>
+    <button type="button" class="btn btn-primary" (click)="backToVideo()">Vissza</button>
+  </section>
+} @else {
+  <section class="highlights-page">
+    <header class="page-header">
+      <button type="button" class="btn btn-secondary back-btn" (click)="backToVideo()">Vissza a videóhoz</button>
+      <div>
+        <h2>Legjobb pillanatok keresése</h2>
+        <p>{{ video.originalFileName }} · hossz: {{ formatTime(video.durationSeconds) }}</p>
+      </div>
+    </header>
+
+    @if (errorMessage.length > 0) {
+      <p class="status error">{{ errorMessage }}</p>
+    }
+    @if (successMessage.length > 0) {
+      <p class="status success">{{ successMessage }}</p>
+    }
+
+    @if (video.durationSeconds < 240) {
+      <section class="state-box warning">
+        <p>Ez a funkció jelenleg legalább 4 perces videónál érhető el.</p>
+      </section>
+    } @else {
+      <section class="layout">
+        <main class="player-panel">
+          <div class="video-shell">
+            <video
+              #player
+              [src]="video.mediaUrl"
+              preload="metadata"
+              (loadedmetadata)="onVideoMetadata($event)"
+              (timeupdate)="onVideoTimeUpdate($event)"
+              (pause)="onVideoPause()"
+              (play)="onVideoPlay()"
+            ></video>
+          </div>
+
+          <section class="timeline-box">
+            <div class="timeline-head">
+              <button type="button" class="btn btn-primary" (click)="togglePlayback()">
+                @if (isPlaying === true) {
+                  Szünet
+                } @else {
+                  Lejátszás
+                }
+              </button>
+              <p>{{ formatTime(currentTimeSeconds) }} / {{ formatTime(durationSeconds) }}</p>
+            </div>
+            <input
+              type="range"
+              min="0"
+              [max]="durationSeconds"
+              step="0.01"
+              [ngModel]="currentTimeSeconds"
+              (ngModelChange)="onTimelineSeek($event)"
+            />
+
+            @if (activeClipRange() !== null) {
+              <div class="range-editor">
+                <div class="range-editor-head">
+                  <p>Klip tartomány (tól-ig)</p>
+                  <span>{{ formatTime(activeClipRange()!.startSeconds) }} - {{ formatTime(activeClipRange()!.endSeconds) }}</span>
+                </div>
+
+                <div class="range-slider">
+                  <div class="range-slider__track"></div>
+                  <div
+                    class="range-slider__selection"
+                    [style.left.%]="activeClipStartPercent()"
+                    [style.width.%]="activeClipWidthPercent()"
+                  ></div>
+
+                  <input
+                    class="range-slider__thumb range-slider__thumb--start"
+                    type="range"
+                    min="0"
+                    [max]="durationSeconds"
+                    step="0.01"
+                    [ngModel]="activeClipRange()!.startSeconds"
+                    (ngModelChange)="onActiveClipStartChanged($event)"
+                  />
+                  <input
+                    class="range-slider__thumb range-slider__thumb--end"
+                    type="range"
+                    min="0"
+                    [max]="durationSeconds"
+                    step="0.01"
+                    [ngModel]="activeClipRange()!.endSeconds"
+                    (ngModelChange)="onActiveClipEndChanged($event)"
+                  />
+                </div>
+              </div>
+            }
+          </section>
+
+          @if (activeClipRange() !== null) {
+            <section class="clip-editor">
+              <h3>Aktív klip finomhangolása</h3>
+              <div class="editor-grid">
+                <label>
+                  Kezdet (másodperc)
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    [ngModel]="activeClipRange()!.startSeconds"
+                    (ngModelChange)="onActiveClipStartChanged($event)"
+                  />
+                </label>
+
+                <label>
+                  Vége (másodperc)
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    [ngModel]="activeClipRange()!.endSeconds"
+                    (ngModelChange)="onActiveClipEndChanged($event)"
+                  />
+                </label>
+              </div>
+              <div class="editor-actions">
+                <button type="button" class="btn btn-secondary" (click)="setActiveClipStartFromCurrent()">Kezdet = aktuális idő</button>
+                <button type="button" class="btn btn-secondary" (click)="setActiveClipEndFromCurrent()">Vége = aktuális idő</button>
+              </div>
+              <div class="single-export-actions">
+                <button type="button" class="btn btn-primary" [disabled]="canExportActiveClip() === false" (click)="exportActiveClip()">
+                  @if (isExporting === true) {
+                    Klip exportálása...
+                  } @else {
+                    Aktív klip exportálása
+                  }
+                </button>
+                @if (exportedClipVideoId !== null) {
+                  <button type="button" class="btn btn-secondary open-exported-btn" (click)="openExportedClip()">Klip megnyitása</button>
+                }
+              </div>
+            </section>
+          }
+        </main>
+
+        <aside class="analysis-panel">
+          <section class="search-box">
+            <h3>Jelenetek keresése</h3>
+            <label>
+              Célmód
+              <select [(ngModel)]="selectedMode">
+                @for (mode of modeOptions; track mode.value) {
+                  <option [value]="mode.value">{{ mode.label }}</option>
+                }
+              </select>
+            </label>
+
+            <p class="mode-helper">
+              @for (mode of modeOptions; track mode.value) {
+                @if (mode.value === selectedMode) {
+                  {{ mode.helper }}
+                }
+              }
+            </p>
+
+            @if (analysis !== null && analysis.requiresWhisper === true && analysis.status !== 'completed') {
+              <p class="need-whisper">Az elemzéshez előbb Whisper átirat készül.</p>
+            }
+
+            <button
+              type="button"
+              class="btn btn-primary"
+              [disabled]="canSearchScenes() === false || isAnalysisRunning() === true"
+              (click)="startSceneSearch()"
+            >
+              @if (isStartingAnalysis === true) {
+                Elemzés indítása...
+              } @else {
+                Jelenetek keresése
+              }
+            </button>
+
+            @if (analysis !== null) {
+              <div class="analysis-state">
+                <p><strong>Állapot:</strong> {{ analysis.status }}</p>
+                @if (processingText.length > 0) {
+                  <p>{{ processingText }}</p>
+                }
+                <div class="progress-track" role="progressbar" [attr.aria-valuenow]="analysis.progressPercent">
+                  <div class="progress-value" [style.width.%]="analysis.progressPercent"></div>
+                </div>
+                <p>{{ analysis.progressPercent }}%</p>
+              </div>
+            }
+          </section>
+
+          @if (analysis !== null && analysis.status === 'failed') {
+            <p class="status error">{{ analysis.errorMessage.length > 0 ? analysis.errorMessage : 'Az elemzés sikertelen.' }}</p>
+          }
+
+          @if (analysis !== null && analysis.clips.length > 0) {
+            <section class="clips-box">
+              <h3>Talált klipek ({{ analysis.clips.length }})</h3>
+              <div class="clip-list">
+                @for (clip of analysis.clips; track clip.id) {
+                  <article class="clip-card" [class.active]="clip.id === activeClipId">
+                    <div class="clip-top-row">
+                      <p class="clip-title">#{{ clip.rank }} klip</p>
+                      <button type="button" class="btn btn-secondary btn-sm jump-btn" (click)="activateClip(clip)">Ugrás ide</button>
+                    </div>
+
+                    <button type="button" class="thumb-btn" (click)="activateClip(clip)">
+                      <img [src]="clip.screenshotUrl" alt="Klip előnézet" />
+                    </button>
+
+                    <p class="clip-meta">
+                      #{{ clip.rank }} · {{ formatTime(clip.startSeconds) }} - {{ formatTime(clip.endSeconds) }}
+                      ({{ formatTime(clip.durationSeconds) }})
+                    </p>
+                    <p class="clip-meta">Pontszám: {{ (clip.score * 100) | number:'1.0-1' }}%</p>
+                    <p class="reason-summary">{{ clip.reasonSummary }}</p>
+                    @if (clip.transcriptSnippet.length > 0) {
+                      <p class="snippet">"{{ clip.transcriptSnippet }}"</p>
+                    }
+
+                    @if (clip.reasons.length > 0) {
+                      <ul>
+                        @for (reason of clip.reasons; track reason.key) {
+                          <li>
+                            <strong>{{ reason.label }}</strong>: {{ reason.explanation }}
+                          </li>
+                        }
+                      </ul>
+                    }
+
+                    <div class="feedback-row">
+                      <span>Indoklás helyes?</span>
+                      <button type="button" class="btn btn-secondary btn-sm" (click)="submitReasonFeedback(clip, true)">Helyes</button>
+                      <button type="button" class="btn btn-danger btn-sm" (click)="submitReasonFeedback(clip, false)">Helytelen</button>
+                    </div>
+                    @if (clip.feedbackStatus !== 'unset') {
+                      <p class="feedback-state">Visszajelzés: {{ clip.feedbackStatus }}</p>
+                    }
+                  </article>
+                }
+              </div>
+            </section>
+          } @else if (analysis !== null && analysis.status === 'completed') {
+            <p class="status">Az elemzés lefutott, de nem talált megfelelő jelölteket ezzel a móddal.</p>
+          }
+        </aside>
+      </section>
+    }
+  </section>
+}

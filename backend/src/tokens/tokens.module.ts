@@ -3,7 +3,10 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { MailModule } from '../mail/mail.module';
 import { UserEntity } from '../users/entities/user.entity';
+import { VideoEntity } from '../videos/entities/video.entity';
+import { OldVideoStorageFeeService } from './old-video-storage-fee.service';
 import { TokenHistoryEntity } from './entities/token-history.entity';
 import { TokensController } from './tokens.controller';
 import { TokensService } from './tokens.service';
@@ -11,7 +14,8 @@ import { TokensService } from './tokens.service';
 @Module({
   imports: [
     ConfigModule,
-    TypeOrmModule.forFeature([UserEntity, TokenHistoryEntity]),
+    MailModule,
+    TypeOrmModule.forFeature([UserEntity, TokenHistoryEntity, VideoEntity]),
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (configService : ConfigService) => ({
@@ -19,7 +23,7 @@ import { TokensService } from './tokens.service';
       }),
     }),
   ],
-  providers: [TokensService, JwtAuthGuard],
+  providers: [TokensService, OldVideoStorageFeeService, JwtAuthGuard],
   controllers: [TokensController],
   exports: [TokensService],
 })

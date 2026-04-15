@@ -8,6 +8,10 @@
   </section>
 } @else if (video !== undefined) {
   <section class="video-layout">
+    <div class="video-topbar">
+      <button type="button" class="back-btn" [routerLink]="['/lista']">Vissza a listához</button>
+    </div>
+
     @if (errorMessage.length > 0) {
       <p class="page-error page-error-global">{{ errorMessage }}</p>
     }
@@ -32,7 +36,7 @@
         <h4>Whisper beállítások</h4>
         <label>
           Modell
-          <input type="text" [ngModel]="whisperModel" readonly />
+          <div class="model-fixed">{{ whisperModel }}</div>
         </label>
 
         <label>
@@ -56,6 +60,9 @@
       <button type="button" (click)="requestListen()">Lehallgatom</button>
       @if (listenRequestState.length > 0) {
         <p class="status">{{ listenRequestState }}</p>
+      }
+      @if (canOpenHighlights() === true) {
+        <a class="highlight-link" [routerLink]="['/video', video.id, 'highlights']">Legjobb pillanatok keresése</a>
       }
       <div class="processing-state">
         <p>Állapot: {{ video.processingStatus }}</p>

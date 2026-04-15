@@ -130,6 +130,9 @@ export class VideosService {
   private readonly uploadAudioBitRateMultiplier : number = 1.15;
   private readonly chunkSizeBytes : number = 10 * 1024 * 1024;
   private readonly uploadSessions : Map<string, UploadSession> = new Map<string, UploadSession>();
+  private readonly uploadNormalizationQueue : number[] = [];
+  private readonly uploadNormalizationQueuedIds : Set<number> = new Set<number>();
+  private isUploadNormalizationRunning : boolean = false;
   private readonly youtubeImportTasks : Map<string, YoutubeImportTask> = new Map<string, YoutubeImportTask>();
   private readonly chunkTempRoot : string = join(process.cwd(), 'data', 'upload-chunks');
   private readonly uploadsDir : string;
@@ -168,26 +171,22 @@ export class VideosService {
       TOKEN_ENTRY_TYPE_UPLOAD,
       `Videó feltöltés: ${file.originalname}`,
     );
-    let finalStorageFileName : string = file.filename;
+    let createdVideo : VideoDetails | null = null;
     try {
-      const normalized : StoredMediaFile = await this.normalizeUploadedMediaFile(file.filename);
-      finalStorageFileName = normalized.storageFileName;
-      const createdVideo : VideoDetails = await this.createFromStoredFile(
+      createdVideo = await this.createPendingVideoFromStoredFile(
         ownerId,
         file.originalname,
-        normalized.storageFileName,
-        normalized.fileSizeBytes,
+        file.filename,
+        Number(file.size),
       );
+      this.enqueueVideoNormalization(createdVideo.id);
       this.logger.log(
-        `Direkt feltöltés kész. ownerId=${ownerId}, videoId=${createdVideo.id}, stored="${normalized.storageFileName}", converted=${
-          normalized.storageFileName !== file.filename
-        }, durationSec=${createdVideo.durationSeconds}`,
+        `Direkt feltöltés queuezva. ownerId=${ownerId}, videoId=${createdVideo.id}, stored="${file.filename}", status=${createdVideo.processingStatus}`,
       );
       return createdVideo;
     } catch (error : unknown) {
-      if (finalStorageFileName !== file.filename) {
-        const normalizedPath : string = join(this.uploadsDir, finalStorageFileName);
-        await rm(normalizedPath, { force: true });
+      if (createdVideo === null) {
+        await rm(file.path, { force: true });
       }
       const message : string = error instanceof Error ? error.message : 'ismeretlen hiba';
       this.logger.error(`Direkt feltöltés hiba. ownerId=${ownerId}, file="${file.originalname}", details=${message}`);
@@ -298,36 +297,34 @@ export class VideosService {
       });
     });
 
-    let normalizedStorage : StoredMediaFile | null = null;
+    let createdVideo : VideoDetails | null = null;
     try {
-      normalizedStorage = await this.normalizeUploadedMediaFile(storageFileName);
+      const assembledFileStat = await stat(finalPath);
       await this.tokensService.charge(
         ownerId,
         TOKEN_COST_UPLOAD,
         TOKEN_ENTRY_TYPE_UPLOAD,
         `Videó feltöltés: ${session.originalFileName}`,
       );
-      const video : VideoDetails = await this.createFromStoredFile(
+      createdVideo = await this.createPendingVideoFromStoredFile(
         ownerId,
         session.originalFileName,
-        normalizedStorage.storageFileName,
-        normalizedStorage.fileSizeBytes,
+        storageFileName,
+        Number(assembledFileStat.size),
       );
+      this.enqueueVideoNormalization(createdVideo.id);
 
       this.uploadSessions.delete(dto.uploadId);
       await rm(uploadDir, { recursive: true, force: true });
       this.logger.log(
-        `Chunk feltöltés lezárva. ownerId=${ownerId}, uploadId=${dto.uploadId}, videoId=${video.id}, stored="${normalizedStorage.storageFileName}", converted=${
-          normalizedStorage.storageFileName !== storageFileName
-        }, durationSec=${video.durationSeconds}`,
+        `Chunk feltöltés lezárva (feldolgozás queuezva). ownerId=${ownerId}, uploadId=${dto.uploadId}, videoId=${createdVideo.id}, stored="${storageFileName}", status=${createdVideo.processingStatus}`,
       );
 
-      return video;
+      return createdVideo;
     } catch (error : unknown) {
-      if (normalizedStorage !== null) {
-        await rm(join(this.uploadsDir, normalizedStorage.storageFileName), { force: true });
+      if (createdVideo === null) {
+        await rm(finalPath, { force: true });
       }
-      await rm(finalPath, { force: true });
       this.uploadSessions.delete(dto.uploadId);
       await rm(uploadDir, { recursive: true, force: true });
       const message : string = error instanceof Error ? error.message : 'ismeretlen hiba';
@@ -1302,6 +1299,130 @@ export class VideosService {
       }", size=${fileSizeBytes}, durationSec=${durationSeconds}`,
     );
     return await this.toVideoDetails(savedVideo);
+  }
+
+  /**
+   * Gyors rekord létrehozás feltöltés lezárásakor.
+   * A nehéz médiafeldolgozás háttér queue-ban fut le.
+   * @param ownerId Feltöltő user azonosítója.
+   * @param originalFileName Eredeti fájlnév.
+   * @param storageFileName Szerveren tárolt fájlnév.
+   * @param fileSizeBytes Fájlméret byte-ban.
+   * @returns Létrejött videó részletes adatai pending státusszal.
+   */
+  private async createPendingVideoFromStoredFile(
+    ownerId : number,
+    originalFileName : string,
+    storageFileName : string,
+    fileSizeBytes : number,
+  ) : Promise<VideoDetails> {
+    const createdVideo : VideoEntity = this.videosRepository.create({
+      ownerId,
+      originalFileName,
+      storageFileName,
+      thumbnailFileName: '',
+      fileSizeBytes,
+      durationSeconds: 0,
+      isHidden: false,
+      listenRequested: false,
+      subtitleText: '',
+      processingStatus: 'pending',
+      socialTextCombined: '',
+      subtitlePresetId: null,
+    });
+
+    const savedVideo : VideoEntity = await this.videosRepository.save(createdVideo);
+    this.logger.log(
+      `Videó rekord létrehozva (pending). ownerId=${ownerId}, videoId=${savedVideo.id}, original="${originalFileName}", stored="${storageFileName}", size=${fileSizeBytes}`,
+    );
+    return await this.toVideoDetails(savedVideo);
+  }
+
+  /**
+   * Feltöltött videó háttérfeldolgozás queue-ba helyezése.
+   * @param videoId Videó azonosító.
+   * @returns Nem ad vissza értéket.
+   */
+  private enqueueVideoNormalization(videoId : number) : void {
+    if (this.uploadNormalizationQueuedIds.has(videoId) === true) {
+      return;
+    }
+
+    this.uploadNormalizationQueuedIds.add(videoId);
+    this.uploadNormalizationQueue.push(videoId);
+    void this.processVideoNormalizationQueue();
+  }
+
+  /**
+   * Feltöltött videók háttér normalizálása (soros feldolgozás).
+   * @returns Nem ad vissza értéket.
+   */
+  private async processVideoNormalizationQueue() : Promise<void> {
+    if (this.isUploadNormalizationRunning === true) {
+      return;
+    }
+
+    this.isUploadNormalizationRunning = true;
+    try {
+      while (this.uploadNormalizationQueue.length > 0) {
+        const videoId : number | undefined = this.uploadNormalizationQueue.shift();
+        if (videoId === undefined) {
+          continue;
+        }
+        this.uploadNormalizationQueuedIds.delete(videoId);
+        await this.processSingleVideoNormalization(videoId);
+      }
+    } finally {
+      this.isUploadNormalizationRunning = false;
+    }
+  }
+
+  /**
+   * Egy konkrét videó média normalizálása (konvertálás + duration + thumbnail).
+   * @param videoId Videó azonosító.
+   * @returns Nem ad vissza értéket.
+   */
+  private async processSingleVideoNormalization(videoId : number) : Promise<void> {
+    const video : VideoEntity | null = await this.videosRepository.findOne({ where: { id: videoId } });
+    if (video === null) {
+      return;
+    }
+
+    video.processingStatus = 'pending';
+    await this.videosRepository.save(video);
+
+    const startedAt : number = Date.now();
+    this.logger.log(`Háttér médiafeldolgozás indult. videoId=${video.id}, stored="${video.storageFileName}"`);
+
+    try {
+      const normalized : StoredMediaFile = await this.normalizeUploadedMediaFile(video.storageFileName);
+      const normalizedPath : string = join(this.uploadsDir, normalized.storageFileName);
+      const durationSeconds : number = await this.detectDurationSeconds(normalizedPath);
+      const thumbnailFileName : string = await this.generateThumbnailForVideo(normalized.storageFileName, durationSeconds);
+      const previousThumbnail : string = video.thumbnailFileName;
+
+      video.storageFileName = normalized.storageFileName;
+      video.fileSizeBytes = normalized.fileSizeBytes;
+      video.durationSeconds = durationSeconds;
+      video.thumbnailFileName = thumbnailFileName;
+      video.processingStatus = 'idle';
+      await this.videosRepository.save(video);
+
+      if (previousThumbnail.length > 0 && previousThumbnail !== thumbnailFileName) {
+        await rm(join(this.uploadsDir, previousThumbnail), { force: true });
+      }
+
+      this.logger.log(
+        `Háttér médiafeldolgozás kész. videoId=${video.id}, stored="${video.storageFileName}", durationSec=${video.durationSeconds}, thumbnail="${
+          video.thumbnailFileName.length > 0 ? video.thumbnailFileName : 'none'
+        }", elapsedMs=${Date.now() - startedAt}`,
+      );
+    } catch (error : unknown) {
+      const details : string = error instanceof Error ? error.message : 'ismeretlen hiba';
+      this.logger.error(`Háttér médiafeldolgozás hiba. videoId=${video.id}, details=${details}`);
+      video.processingStatus = 'idle';
+      await this.videosRepository.save(video);
+    }
   }
 
   /**

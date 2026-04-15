@@ -226,7 +226,7 @@ Folyamat:
 - 1 hónapnál régebbi videó napi tárolási díja: `-1 token / videó / nap`
   A napi régi-videó díj ellenőrzés és levonás minden nap `16:00` után fut.
   Ha a usernek van 1 hónapnál régebbi videója, automatikus emlékeztető emailt kap.
-- Regisztrációs jóváírás: `+100 token`
+- Regisztrációs jóváírás: `+350 token`
 - Havi jóváírás (hó elején, ha 300 alatt van): `+100 token`
 
 ## Megjegyzés Gmailhez

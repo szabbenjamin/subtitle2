@@ -10,6 +10,7 @@ import { TokensModule } from './tokens/tokens.module';
 import { UserEntity } from './users/entities/user.entity';
 import { VideoHighlightAnalysisEntity } from './videos/entities/video-highlight-analysis.entity';
 import { VideoHighlightClipEntity } from './videos/entities/video-highlight-clip.entity';
+import { VideoIngestTaskEntity } from './videos/entities/video-ingest-task.entity';
 import { VideoEntity } from './videos/entities/video.entity';
 import { VideosModule } from './videos/videos.module';
 
@@ -174,7 +175,7 @@ function validateEnvironment(rawEnv : Record<string, unknown>) : Record<string, 
         database: readTextConfig(configService, 'MYSQL_DATABASE', 'subtitle2'),
         charset: readTextConfig(configService, 'MYSQL_CHARSET', 'utf8mb4'),
         timezone: readTextConfig(configService, 'MYSQL_TIMEZONE', 'Z'),
-        entities: [UserEntity, VideoEntity, VideoHighlightAnalysisEntity, VideoHighlightClipEntity, SubtitlePresetEntity, TokenHistoryEntity],
+        entities: [UserEntity, VideoEntity, VideoHighlightAnalysisEntity, VideoHighlightClipEntity, VideoIngestTaskEntity, SubtitlePresetEntity, TokenHistoryEntity],
         synchronize: readBooleanConfig(configService, 'DB_SYNCHRONIZE', true),
       }),
     }),

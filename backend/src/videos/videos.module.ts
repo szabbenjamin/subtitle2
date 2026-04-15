@@ -6,6 +6,7 @@ import { TokensModule } from '../tokens/tokens.module';
 import { UserEntity } from '../users/entities/user.entity';
 import { VideoHighlightAnalysisEntity } from './entities/video-highlight-analysis.entity';
 import { VideoHighlightClipEntity } from './entities/video-highlight-clip.entity';
+import { VideoIngestTaskEntity } from './entities/video-ingest-task.entity';
 import { VideoEntity } from './entities/video.entity';
 import { UploadsOrphanCleanupService } from './uploads-orphan-cleanup.service';
 import { VideoExportService } from './video-export.service';
@@ -15,7 +16,11 @@ import { VideosController } from './videos.controller';
 import { VideosService } from './videos.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([VideoEntity, VideoHighlightAnalysisEntity, VideoHighlightClipEntity, SubtitlePresetEntity, UserEntity]), AuthModule, TokensModule],
+  imports: [
+    TypeOrmModule.forFeature([VideoEntity, VideoHighlightAnalysisEntity, VideoHighlightClipEntity, VideoIngestTaskEntity, SubtitlePresetEntity, UserEntity]),
+    AuthModule,
+    TokensModule,
+  ],
   providers: [VideosService, VideoExportService, VideoSocialService, VideoHighlightsService, UploadsOrphanCleanupService],
   controllers: [VideosController],
 })

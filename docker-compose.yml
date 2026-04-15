@@ -58,6 +58,9 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+      args:
+        FRONTEND_BUILD_COMMIT: ${FRONTEND_BUILD_COMMIT:-local}
+        FRONTEND_BUILD_DATE: ${FRONTEND_BUILD_DATE:-unknown}
     container_name: subtitle2-frontend
     restart: unless-stopped
     depends_on:

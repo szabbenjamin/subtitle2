@@ -1,11 +1,28 @@
 FROM node:24-bookworm-slim
 
 WORKDIR /app/frontend
+ARG FRONTEND_BUILD_COMMIT=dev
+ARG FRONTEND_BUILD_DATE=dev
 
 COPY frontend/package*.json ./
 RUN npm ci
 
 COPY frontend ./
+RUN FRONTEND_BUILD_COMMIT_VALUE="${FRONTEND_BUILD_COMMIT}"; \
+  FRONTEND_BUILD_DATE_VALUE="${FRONTEND_BUILD_DATE}"; \
+  if [ -z "${FRONTEND_BUILD_COMMIT_VALUE}" ]; then FRONTEND_BUILD_COMMIT_VALUE="dev"; fi; \
+  if [ -z "${FRONTEND_BUILD_DATE_VALUE}" ] || [ "${FRONTEND_BUILD_DATE_VALUE}" = "dev" ]; then FRONTEND_BUILD_DATE_VALUE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"; fi; \
+  cat > /app/frontend/src/app/config/build-info.ts <<EOF
+export interface FrontendBuildInfo {
+  commit : string;
+  builtAtUtc : string;
+}
+
+export const BUILD_INFO : FrontendBuildInfo = {
+  commit: '${FRONTEND_BUILD_COMMIT_VALUE}',
+  builtAtUtc: '${FRONTEND_BUILD_DATE_VALUE}',
+};
+EOF
 
 EXPOSE 4200
 

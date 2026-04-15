@@ -94,6 +94,9 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile.dev
+      args:
+        FRONTEND_BUILD_COMMIT: ${FRONTEND_BUILD_COMMIT:-dev}
+        FRONTEND_BUILD_DATE: ${FRONTEND_BUILD_DATE:-dev}
     container_name: subtitle2-frontend-dev
     restart: unless-stopped
     depends_on:

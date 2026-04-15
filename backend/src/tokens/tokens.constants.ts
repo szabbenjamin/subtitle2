@@ -1,4 +1,4 @@
-export const REGISTRATION_BONUS_TOKENS : number = 100;
+export const REGISTRATION_BONUS_TOKENS : number = 350;
 export const MONTHLY_BONUS_TOKENS : number = 100;
 export const MONTHLY_BONUS_LIMIT : number = 300;
 

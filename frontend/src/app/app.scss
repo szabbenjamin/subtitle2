@@ -21,6 +21,12 @@
 
 .app-content {
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.page-content {
+  flex: 1 1 auto;
 }
 
 .app-shell::before {
@@ -166,6 +172,14 @@ button:hover::after {
   background: linear-gradient(145deg, color-mix(in srgb, #d45555 16%, var(--surface-color) 84%), var(--surface-color));
 }
 
+.app-footer {
+  margin-top: auto;
+  padding: 0.6rem 1rem 0.8rem;
+  text-align: center;
+  font-size: 0.8rem;
+  color: color-mix(in srgb, var(--text-color) 68%, transparent);
+}
+
 .install-bar {
   position: fixed;
   bottom: 0.75rem;
@@ -268,5 +282,10 @@ button:hover::after {
   .install-bar {
     flex-direction: column;
     gap: 0.5rem;
+  }
+
+  .app-footer {
+    padding-bottom: 1rem;
+    font-size: 0.76rem;
   }
 }

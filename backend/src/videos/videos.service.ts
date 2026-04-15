@@ -21,6 +21,7 @@ import {
 import { TokensService } from '../tokens/tokens.service';
 import { UserEntity } from '../users/entities/user.entity';
 import { VideoHighlightClipEntity } from './entities/video-highlight-clip.entity';
+import { VideoIngestSourceType, VideoIngestStatus, VideoIngestTaskEntity } from './entities/video-ingest-task.entity';
 import { VideoEntity } from './entities/video.entity';
 import { ExportedVideoFile, VideoExportService } from './video-export.service';
 import { SocialTextResult, VideoSocialService } from './video-social.service';
@@ -57,6 +58,7 @@ interface UploadSession {
   originalFileName : string;
   fileSizeBytes : number;
   totalChunks : number;
+  lastProgressPercent : number;
 }
 
 interface ProbedMediaStream {
@@ -98,6 +100,7 @@ interface YoutubeImportTask {
   startedAt : Date;
   updatedAt : Date;
   downloadProcess : ChildProcess | null;
+  ingestTaskId : number;
 }
 
 export interface YoutubeImportStartResponse {
@@ -119,6 +122,20 @@ export interface YoutubeImportStatusResponse {
   updatedAt : Date;
 }
 
+export interface VideoIngestTaskListItem {
+  id : number;
+  sourceType : VideoIngestSourceType;
+  externalId : string;
+  displayTitle : string;
+  status : VideoIngestStatus;
+  progressPercent : number;
+  stageMessage : string;
+  errorMessage : string;
+  videoId : number | null;
+  createdAt : Date;
+  updatedAt : Date;
+}
+
 @Injectable()
 export class VideosService {
   private readonly logger : Logger = new Logger(VideosService.name);
@@ -129,6 +146,7 @@ export class VideosService {
   private readonly uploadVideoBitRateMultiplier : number = 1.3;
   private readonly uploadAudioBitRateMultiplier : number = 1.15;
   private readonly chunkSizeBytes : number = 10 * 1024 * 1024;
+  private readonly activeIngestTaskStatuses : VideoIngestStatus[] = ['queued', 'uploading', 'downloading', 'processing'];
   private readonly uploadSessions : Map<string, UploadSession> = new Map<string, UploadSession>();
   private readonly uploadNormalizationQueue : number[] = [];
   private readonly uploadNormalizationQueuedIds : Set<number> = new Set<number>();
@@ -142,6 +160,8 @@ export class VideosService {
     private readonly videosRepository : Repository<VideoEntity>,
     @InjectRepository(VideoHighlightClipEntity)
     private readonly videoHighlightClipsRepository : Repository<VideoHighlightClipEntity>,
+    @InjectRepository(VideoIngestTaskEntity)
+    private readonly ingestTasksRepository : Repository<VideoIngestTaskEntity>,
     @InjectRepository(SubtitlePresetEntity)
     private readonly presetsRepository : Repository<SubtitlePresetEntity>,
     @InjectRepository(UserEntity)
@@ -208,11 +228,24 @@ export class VideosService {
     }
 
     const uploadId : string = `${ownerId}-${Date.now()}-${Math.round(Math.random() * 1_000_000)}`;
+    await this.createIngestTask({
+      ownerId,
+      sourceType: 'file',
+      externalId: uploadId,
+      displayTitle: dto.originalFileName,
+      status: 'uploading',
+      progressPercent: 0,
+      stageMessage: 'Feltöltés előkészítése...',
+      errorMessage: '',
+      videoId: null,
+    });
+
     this.uploadSessions.set(uploadId, {
       ownerId,
       originalFileName: dto.originalFileName,
       fileSizeBytes: dto.fileSizeBytes,
       totalChunks: dto.totalChunks,
+      lastProgressPercent: 0,
     });
 
     const uploadDir : string = this.resolveUploadDir(uploadId);
@@ -246,6 +279,15 @@ export class VideosService {
 
     const chunkPath : string = this.resolveChunkPath(dto.uploadId, dto.chunkIndex);
     await writeFile(chunkPath, file.buffer);
+    const chunkProgressPercent : number = Math.max(1, Math.min(95, Math.round(((dto.chunkIndex + 1) / session.totalChunks) * 95)));
+    if (chunkProgressPercent > session.lastProgressPercent) {
+      session.lastProgressPercent = chunkProgressPercent;
+      await this.updateIngestTaskByExternalId(ownerId, 'file', dto.uploadId, {
+        status: 'uploading',
+        progressPercent: chunkProgressPercent,
+        stageMessage: 'Feltöltés folyamatban...',
+      });
+    }
     if (dto.chunkIndex === 0 || dto.chunkIndex + 1 === session.totalChunks || (dto.chunkIndex + 1) % 10 === 0) {
       this.logger.log(
         `Chunk érkezett. ownerId=${ownerId}, uploadId=${dto.uploadId}, chunk=${dto.chunkIndex + 1}/${session.totalChunks}, bytes=${file.size}`,
@@ -275,6 +317,12 @@ export class VideosService {
         throw new BadRequestException(`Hiányzó chunk: ${index + 1}/${session.totalChunks}`);
       }
     }
+    await this.updateIngestTaskByExternalId(ownerId, 'file', dto.uploadId, {
+      status: 'processing',
+      progressPercent: 97,
+      stageMessage: 'Feldolgozás folyamatban...',
+      errorMessage: '',
+    });
 
     await mkdir(this.uploadsDir, { recursive: true });
     const extension : string = extname(session.originalFileName);
@@ -316,6 +364,13 @@ export class VideosService {
 
       this.uploadSessions.delete(dto.uploadId);
       await rm(uploadDir, { recursive: true, force: true });
+      await this.updateIngestTaskByExternalId(ownerId, 'file', dto.uploadId, {
+        status: 'completed',
+        progressPercent: 100,
+        stageMessage: 'Feltöltés kész.',
+        errorMessage: '',
+        videoId: createdVideo.id,
+      });
       this.logger.log(
         `Chunk feltöltés lezárva (feldolgozás queuezva). ownerId=${ownerId}, uploadId=${dto.uploadId}, videoId=${createdVideo.id}, stored="${storageFileName}", status=${createdVideo.processingStatus}`,
       );
@@ -328,6 +383,11 @@ export class VideosService {
       this.uploadSessions.delete(dto.uploadId);
       await rm(uploadDir, { recursive: true, force: true });
       const message : string = error instanceof Error ? error.message : 'ismeretlen hiba';
+      await this.updateIngestTaskByExternalId(ownerId, 'file', dto.uploadId, {
+        status: 'failed',
+        stageMessage: 'Feltöltés hibával leállt.',
+        errorMessage: message,
+      });
       this.logger.error(`Chunk feltöltés lezárási hiba. ownerId=${ownerId}, uploadId=${dto.uploadId}, details=${message}`);
       throw error;
     }
@@ -351,6 +411,11 @@ export class VideosService {
     this.uploadSessions.delete(dto.uploadId);
     const uploadDir : string = this.resolveUploadDir(dto.uploadId);
     await rm(uploadDir, { recursive: true, force: true });
+    await this.updateIngestTaskByExternalId(ownerId, 'file', dto.uploadId, {
+      status: 'cancelled',
+      stageMessage: 'Feltöltés megszakítva.',
+      errorMessage: '',
+    });
     this.logger.warn(`Chunk feltöltés megszakítva. ownerId=${ownerId}, uploadId=${dto.uploadId}, file="${session.originalFileName}"`);
     return { success: true };
   }
@@ -379,7 +444,21 @@ export class VideosService {
       startedAt: now,
       updatedAt: now,
       downloadProcess: null,
+      ingestTaskId: 0,
     };
+
+    const ingestTask : VideoIngestTaskEntity = await this.createIngestTask({
+      ownerId,
+      sourceType: 'youtube',
+      externalId: importId,
+      displayTitle: task.displayTitle,
+      status: task.status,
+      progressPercent: task.progressPercent,
+      stageMessage: task.stageMessage,
+      errorMessage: task.errorMessage,
+      videoId: null,
+    });
+    task.ingestTaskId = ingestTask.id;
 
     this.youtubeImportTasks.set(importId, task);
     this.pruneYoutubeImportTasks();
@@ -421,6 +500,23 @@ export class VideosService {
     }
     this.logger.warn(`YouTube import megszakítás kérve. ownerId=${ownerId}, importId=${importId}`);
     return { success: true };
+  }
+
+  /**
+   * Aktív ingest folyamatok listája (feltöltés + YouTube import).
+   * @param ownerId User azonosító.
+   * @returns Aktív ingest task lista.
+   */
+  public async listActiveIngestTasks(ownerId : number) : Promise<VideoIngestTaskListItem[]> {
+    const tasks : VideoIngestTaskEntity[] = await this.ingestTasksRepository.find({
+      where: this.activeIngestTaskStatuses.map((status : VideoIngestStatus) => ({ ownerId, status })),
+      order: {
+        createdAt: 'DESC',
+        id: 'DESC',
+      },
+    });
+
+    return tasks.map((task : VideoIngestTaskEntity) => this.toIngestTaskListItem(task));
   }
 
   /**
@@ -1027,8 +1123,104 @@ export class VideosService {
 
   private updateYoutubeImportTask(task : YoutubeImportTask, patch : Partial<YoutubeImportTask>) : void {
     Object.assign(task, patch);
+    task.progressPercent = this.clampPercent(task.progressPercent);
     task.updatedAt = new Date();
     this.youtubeImportTasks.set(task.id, task);
+    void this.updateIngestTaskById(task.ingestTaskId, {
+      displayTitle: task.displayTitle,
+      status: task.status,
+      progressPercent: task.progressPercent,
+      stageMessage: task.stageMessage,
+      errorMessage: task.errorMessage,
+      videoId: task.videoId,
+    }).catch((error : unknown) => {
+      const details : string = error instanceof Error ? error.message : 'ismeretlen hiba';
+      this.logger.warn(`Ingest task frissítés sikertelen (YouTube). taskId=${task.ingestTaskId}, details=${details}`);
+    });
+  }
+
+  private async createIngestTask(params : {
+    ownerId : number;
+    sourceType : VideoIngestSourceType;
+    externalId : string;
+    displayTitle : string;
+    status : VideoIngestStatus;
+    progressPercent : number;
+    stageMessage : string;
+    errorMessage : string;
+    videoId : number | null;
+  }) : Promise<VideoIngestTaskEntity> {
+    const task : VideoIngestTaskEntity = this.ingestTasksRepository.create({
+      ownerId: params.ownerId,
+      sourceType: params.sourceType,
+      externalId: params.externalId,
+      displayTitle: params.displayTitle.trim(),
+      status: params.status,
+      progressPercent: this.clampPercent(params.progressPercent),
+      stageMessage: params.stageMessage.trim(),
+      errorMessage: params.errorMessage.trim(),
+      videoId: params.videoId,
+    });
+    return await this.ingestTasksRepository.save(task);
+  }
+
+  private async updateIngestTaskByExternalId(
+    ownerId : number,
+    sourceType : VideoIngestSourceType,
+    externalId : string,
+    patch : Partial<VideoIngestTaskEntity>,
+  ) : Promise<void> {
+    const task : VideoIngestTaskEntity | null = await this.ingestTasksRepository.findOne({
+      where: {
+        ownerId,
+        sourceType,
+        externalId,
+      },
+    });
+    if (task === null) {
+      return;
+    }
+
+    this.applyIngestTaskPatch(task, patch);
+    await this.ingestTasksRepository.save(task);
+  }
+
+  private async updateIngestTaskById(taskId : number, patch : Partial<VideoIngestTaskEntity>) : Promise<void> {
+    const task : VideoIngestTaskEntity | null = await this.ingestTasksRepository.findOne({ where: { id: taskId } });
+    if (task === null) {
+      return;
+    }
+
+    this.applyIngestTaskPatch(task, patch);
+    await this.ingestTasksRepository.save(task);
+  }
+
+  private applyIngestTaskPatch(task : VideoIngestTaskEntity, patch : Partial<VideoIngestTaskEntity>) : void {
+    if (typeof patch.displayTitle === 'string') {
+      task.displayTitle = patch.displayTitle.trim();
+    }
+    if (typeof patch.status === 'string') {
+      task.status = patch.status as VideoIngestStatus;
+    }
+    if (typeof patch.progressPercent === 'number') {
+      task.progressPercent = this.clampPercent(patch.progressPercent);
+    }
+    if (typeof patch.stageMessage === 'string') {
+      task.stageMessage = patch.stageMessage.trim();
+    }
+    if (typeof patch.errorMessage === 'string') {
+      task.errorMessage = patch.errorMessage.trim();
+    }
+    if (patch.videoId === null || typeof patch.videoId === 'number') {
+      task.videoId = patch.videoId;
+    }
+  }
+
+  private clampPercent(value : number) : number {
+    if (Number.isFinite(value) === false) {
+      return 0;
+    }
+    return Math.min(100, Math.max(0, Math.round(value)));
   }
 
   private toYoutubeImportStartResponse(task : YoutubeImportTask) : YoutubeImportStartResponse {
@@ -1050,6 +1242,22 @@ export class VideosService {
       stageMessage: task.stageMessage,
       errorMessage: task.errorMessage,
       videoId: task.videoId,
+      updatedAt: task.updatedAt,
+    };
+  }
+
+  private toIngestTaskListItem(task : VideoIngestTaskEntity) : VideoIngestTaskListItem {
+    return {
+      id: task.id,
+      sourceType: task.sourceType,
+      externalId: task.externalId,
+      displayTitle: task.displayTitle,
+      status: task.status,
+      progressPercent: this.clampPercent(task.progressPercent),
+      stageMessage: task.stageMessage,
+      errorMessage: task.errorMessage,
+      videoId: task.videoId,
+      createdAt: task.createdAt,
       updatedAt: task.updatedAt,
     };
   }

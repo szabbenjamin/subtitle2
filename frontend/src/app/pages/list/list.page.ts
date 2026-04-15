@@ -5,7 +5,7 @@ import { HostListener } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { forkJoin } from 'rxjs';
-import { VideoDetails, VideoListItem } from '../../models/api.models';
+import { VideoDetails, VideoIngestTask, VideoListItem } from '../../models/api.models';
 import { AlertModalService } from '../../services/alert-modal.service';
 import { TokenService } from '../../services/token.service';
 import { ChunkUploadHandle, UploadCancelledError, UploadDetachedError, VideoService } from '../../services/video.service';
@@ -19,11 +19,13 @@ import { ChunkUploadHandle, UploadCancelledError, UploadDetachedError, VideoServ
 })
 export class ListPage implements OnInit, OnDestroy {
   private readonly youtubeImportStorageKey : string = 'subtitle2.activeYoutubeImport';
+  private readonly listRefreshIntervalMs : number = 2000;
   @ViewChild('picker')
   public picker ?: ElementRef<HTMLInputElement>;
 
   public visibleVideos : VideoListItem[] = [];
   public hiddenVideos : VideoListItem[] = [];
+  public activeIngestTasks : VideoIngestTask[] = [];
   public selectedFile ?: File;
   public youtubeUrl : string = '';
   public uploadProgress : number = 0;
@@ -53,6 +55,8 @@ export class ListPage implements OnInit, OnDestroy {
   ]);
   private uploadHandle ?: ChunkUploadHandle;
   private isDestroyed : boolean = false;
+  private listRefreshTimer ?: ReturnType<typeof setInterval>;
+  private isReloadingLists : boolean = false;
 
   public constructor(
     private readonly videoService : VideoService,
@@ -70,6 +74,7 @@ export class ListPage implements OnInit, OnDestroy {
     this.isDestroyed = false;
     this.tokenService.refreshBalance();
     this.reloadLists();
+    this.startListRefreshTimer();
     this.resumeYoutubeImportFromStorage();
   }
 
@@ -79,6 +84,10 @@ export class ListPage implements OnInit, OnDestroy {
    */
   public ngOnDestroy() : void {
     this.isDestroyed = true;
+    if (this.listRefreshTimer !== undefined) {
+      clearInterval(this.listRefreshTimer);
+      this.listRefreshTimer = undefined;
+    }
     if (this.uploadHandle !== undefined) {
       if (this.activeUploadKind === 'youtube' && typeof this.uploadHandle.detach === 'function') {
         this.uploadHandle.detach();
@@ -146,7 +155,7 @@ export class ListPage implements OnInit, OnDestroy {
    * @returns Nem ad vissza értéket.
    */
   public startUpload() : void {
-    if (this.selectedFile === undefined) {
+    if (this.selectedFile === undefined || this.canShowIngestControls() === false) {
       return;
     }
 
@@ -195,7 +204,7 @@ export class ListPage implements OnInit, OnDestroy {
    */
   public startYoutubeImport() : void {
     const trimmedUrl : string = this.youtubeUrl.trim();
-    if (trimmedUrl.length === 0) {
+    if (trimmedUrl.length === 0 || this.canShowIngestControls() === false) {
       return;
     }
 
@@ -296,7 +305,15 @@ export class ListPage implements OnInit, OnDestroy {
    * YouTube import indítható-e.
    */
   public canStartYoutubeImport() : boolean {
-    return this.isUploading === false && this.youtubeUrl.trim().length > 0;
+    return this.canShowIngestControls() === true && this.youtubeUrl.trim().length > 0;
+  }
+
+  /**
+   * Feltöltési/letöltési vezérlők megjelenhetnek-e.
+   * Lokális vagy másik eszközön futó ingest közben új folyamat nem indítható.
+   */
+  public canShowIngestControls() : boolean {
+    return this.isUploading === false && this.activeIngestTasks.length === 0;
   }
 
   /**
@@ -387,21 +404,60 @@ export class ListPage implements OnInit, OnDestroy {
    * @returns Nem ad vissza értéket.
    */
   private reloadLists() : void {
-    this.isLoadingLists = true;
+    this.reloadListsInternal(false);
+  }
+
+  /**
+   * Pollolt lista + ingest állapot frissítés.
+   * @param silent True esetén nem jelenít meg globális "Lista betöltése..." állapotot.
+   */
+  private reloadListsInternal(silent : boolean) : void {
+    if (this.isReloadingLists === true) {
+      return;
+    }
+
+    this.isReloadingLists = true;
+    if (silent === false) {
+      this.isLoadingLists = true;
+    }
     forkJoin({
       visible: this.videoService.list(false),
       hidden: this.videoService.list(true),
+      ingestTasks: this.videoService.listActiveIngestTasks(),
     }).subscribe({
-      next: (result : { visible : VideoListItem[]; hidden : VideoListItem[] }) => {
+      next: (result : { visible : VideoListItem[]; hidden : VideoListItem[]; ingestTasks : VideoIngestTask[] }) => {
+        if (this.isDestroyed === true) {
+          this.isReloadingLists = false;
+          return;
+        }
         this.visibleVideos = result.visible;
         this.hiddenVideos = result.hidden;
+        this.activeIngestTasks = result.ingestTasks;
         this.isLoadingLists = false;
+        this.isReloadingLists = false;
         this.changeDetectorRef.detectChanges();
       },
       error: () => {
+        this.isReloadingLists = false;
         this.isLoadingLists = false;
       },
     });
+  }
+
+  /**
+   * Háttér listafrissítés indítása, hogy több gépen is látszódjanak az aktív ingest folyamatok.
+   */
+  private startListRefreshTimer() : void {
+    if (this.listRefreshTimer !== undefined) {
+      clearInterval(this.listRefreshTimer);
+    }
+
+    this.listRefreshTimer = setInterval(() => {
+      if (this.isDestroyed === true) {
+        return;
+      }
+      this.reloadListsInternal(true);
+    }, this.listRefreshIntervalMs);
   }
 
   /**

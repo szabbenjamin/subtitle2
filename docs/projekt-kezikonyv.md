@@ -288,7 +288,7 @@ Jelenlegi díjszabás:
 - Whisper lehallgatás: `-5 token / megkezdett perc`
 - Aktív highlight klip export: `-3 token / klip`
 - 1 hónapnál régebbi videó napi díja: `-1 token / videó / nap`
-- Regisztrációs jóváírás: `+100 token`
+- Regisztrációs jóváírás: `+350 token`
 - Havi jóváírás (ha 300 alatt): `+100 token`
 
 History tábla:

@@ -8,6 +8,7 @@ import {
   VideoDetails,
   VideoHighlightAnalysis,
   VideoHighlightClip,
+  VideoIngestTask,
   VideoListItem,
 } from '../models/api.models';
 
@@ -91,6 +92,14 @@ export class VideoService {
    */
   public list(hidden : boolean) : Observable<VideoListItem[]> {
     return this.httpClient.get<VideoListItem[]>(`/api/videos?hidden=${hidden}`);
+  }
+
+  /**
+   * Aktív ingest feladatok lekérése.
+   * @returns Aktív feltöltés/import task lista.
+   */
+  public listActiveIngestTasks() : Observable<VideoIngestTask[]> {
+    return this.httpClient.get<VideoIngestTask[]>('/api/videos/ingest-tasks/active');
   }
 
   /**

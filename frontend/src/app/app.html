@@ -6,10 +6,12 @@
         @if (isLoggedIn() === true) {
           <a routerLink="/lista">Lista</a>
           <a routerLink="/tokenek" class="token-balance">Token: {{ currentTokenBalance() }}</a>
+          <a routerLink="/kezikonyv">Kézikönyv</a>
           @if (isAdminUser() === true) {
             <a routerLink="/admin/tokenek">Admin</a>
           }
         } @else {
+          <a routerLink="/kezikonyv">Kézikönyv</a>
           <a routerLink="/login">Login</a>
         }
 
@@ -28,7 +30,13 @@
       </nav>
     </header>
 
-    <router-outlet></router-outlet>
+    <main class="page-content">
+      <router-outlet></router-outlet>
+    </main>
+
+    <footer class="app-footer">
+      <span>Frontend verzió: {{ frontendVersionLabel() }}</span>
+    </footer>
 
     @if (showInstallBar === true) {
       <div class="install-bar">

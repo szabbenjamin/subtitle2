@@ -39,7 +39,14 @@ import { StartHighlightAnalysisDto } from './dto/start-highlight-analysis.dto';
 import { UpdateHighlightFeedbackDto } from './dto/update-highlight-feedback.dto';
 import { ExportHighlightClipsDto } from './dto/export-highlight-clips.dto';
 import { VideosService } from './videos.service';
-import type { InitUploadResponse, VideoDetails, VideoListItem, YoutubeImportStartResponse, YoutubeImportStatusResponse } from './videos.service';
+import type {
+  InitUploadResponse,
+  VideoDetails,
+  VideoIngestTaskListItem,
+  VideoListItem,
+  YoutubeImportStartResponse,
+  YoutubeImportStatusResponse,
+} from './videos.service';
 import { HighlightExportedVideoDto, VideoHighlightAnalysisDto, VideoHighlightClipDto, VideoHighlightsService } from './video-highlights.service';
 import { ExportedVideoFile } from './video-export.service';
 import { SocialTextResult } from './video-social.service';
@@ -66,6 +73,16 @@ export class VideosController {
   ) : Promise<VideoListItem[]> {
     const hiddenValue : boolean = hidden === true;
     return await this.videosService.list(user.id, hiddenValue);
+  }
+
+  /**
+   * Aktív ingest feladatok listája.
+   * @param user Bejelentkezett user.
+   * @returns Aktív ingest task lista.
+   */
+  @Get('ingest-tasks/active')
+  public async listActiveIngestTasks(@CurrentUser() user : AuthUser) : Promise<VideoIngestTaskListItem[]> {
+    return await this.videosService.listActiveIngestTasks(user.id);
   }
 
   /**

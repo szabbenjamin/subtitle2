@@ -3,6 +3,7 @@ import { adminEmailGuard } from './guards/admin-email.guard';
 import { authGuard } from './guards/auth.guard';
 import { listUploadLeaveGuard } from './guards/list-upload-leave.guard';
 import { AdminTokensPage } from './pages/admin-tokens/admin-tokens.page';
+import { GuidePage } from './pages/guide/guide.page';
 import { ListPage } from './pages/list/list.page';
 import { LoginPage } from './pages/login/login.page';
 import { TokensPage } from './pages/tokens/tokens.page';
@@ -46,6 +47,10 @@ export const routes : Routes = [
     path: 'tokenek',
     component: TokensPage,
     canActivate: [authGuard],
+  },
+  {
+    path: 'kezikonyv',
+    component: GuidePage,
   },
   {
     path: 'admin/tokenek',

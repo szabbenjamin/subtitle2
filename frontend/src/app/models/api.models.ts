@@ -35,6 +35,23 @@ export interface VideoDetails extends VideoListItem {
   wordsPerLine : number;
 }
 
+export type VideoIngestSourceType = 'file' | 'youtube';
+export type VideoIngestStatus = 'queued' | 'uploading' | 'downloading' | 'processing' | 'completed' | 'failed' | 'cancelled';
+
+export interface VideoIngestTask {
+  id : number;
+  sourceType : VideoIngestSourceType;
+  externalId : string;
+  displayTitle : string;
+  status : VideoIngestStatus;
+  progressPercent : number;
+  stageMessage : string;
+  errorMessage : string;
+  videoId : number | null;
+  createdAt : string;
+  updatedAt : string;
+}
+
 export type HighlightMode = 'balanced' | 'funny' | 'emotional' | 'informative' | 'dynamic';
 
 export interface HighlightFeatureReason {

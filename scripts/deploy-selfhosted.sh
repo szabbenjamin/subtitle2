@@ -8,6 +8,8 @@ ENV_FILE_PATH_RAW="${ENV_FILE_PATH:-$PROJECT_ROOT/.env.docker}"
 DOCKER_PROJECT_NAME="${DOCKER_PROJECT_NAME:-subtitle2}"
 DOCKER_COMPOSE_FILES_RAW="${DOCKER_COMPOSE_FILES:-docker-compose.yml}"
 DOCKER_PULL_BEFORE_UP="${DOCKER_PULL_BEFORE_UP:-false}"
+FRONTEND_BUILD_COMMIT="${FRONTEND_BUILD_COMMIT:-}"
+FRONTEND_BUILD_DATE="${FRONTEND_BUILD_DATE:-}"
 
 if [[ "$ENV_FILE_PATH_RAW" == /* ]]; then
   ENV_FILE_PATH="$ENV_FILE_PATH_RAW"
@@ -150,6 +152,20 @@ if [[ ${#compose_args[@]} -eq 0 ]]; then
   exit 1
 fi
 
+if [[ -z "$FRONTEND_BUILD_COMMIT" ]]; then
+  FRONTEND_BUILD_COMMIT="$(git -C "$PROJECT_ROOT" rev-parse --short=12 HEAD 2>/dev/null || true)"
+fi
+if [[ -z "$FRONTEND_BUILD_COMMIT" ]]; then
+  FRONTEND_BUILD_COMMIT="unknown"
+fi
+
+if [[ -z "$FRONTEND_BUILD_DATE" ]]; then
+  FRONTEND_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+fi
+
+export FRONTEND_BUILD_COMMIT
+export FRONTEND_BUILD_DATE
+
 echo "Docker deploy indul"
 echo "- project: $DOCKER_PROJECT_NAME"
 echo "- env: $ENV_FILE_PATH"
@@ -158,6 +174,8 @@ echo "- mysql data: $MYSQL_DATA_DIR"
 echo "- uploads: $BACKEND_UPLOADS_DIR"
 echo "- backend data: $BACKEND_DATA_DIR"
 echo "- whisper cache: $WHISPER_CACHE_DIR"
+echo "- frontend build commit: $FRONTEND_BUILD_COMMIT"
+echo "- frontend build date: $FRONTEND_BUILD_DATE"
 
 compose_base=("${COMPOSE_BIN[@]}" --project-name "$DOCKER_PROJECT_NAME" --env-file "$ENV_FILE_PATH" "${compose_args[@]}")
 

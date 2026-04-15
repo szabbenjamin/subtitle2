@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { Component } from '@angular/core';
 import { Router, RouterLink, RouterOutlet } from '@angular/router';
+import { BUILD_INFO } from './config/build-info';
 import { AlertModalService } from './services/alert-modal.service';
 import { AuthService } from './services/auth.service';
 import { TokenService } from './services/token.service';
@@ -15,6 +16,8 @@ import { ThemeService } from './services/theme.service';
 export class App {
   public installPromptEvent ?: Event;
   public showInstallBar : boolean = false;
+  private readonly frontendCommit : string = this.normalizeBuildValue(BUILD_INFO.commit, 'dev');
+  private readonly frontendBuildTime : string = this.normalizeBuildValue(BUILD_INFO.builtAtUtc, 'ismeretlen');
   private readonly installDismissKey : string = 'subtitle2_install_dismissed_at';
   private readonly adminEmail : string = 'szabbenjamin@gmail.com';
 
@@ -45,6 +48,13 @@ export class App {
       return signalBalance;
     }
     return this.authService.state().profile?.tokenBalance ?? 0;
+  }
+
+  /**
+   * Frontend build verzió rövid címke a footerhez.
+   */
+  public frontendVersionLabel() : string {
+    return `commit: ${this.frontendCommit} | build: ${this.formatBuildTime(this.frontendBuildTime)}`;
   }
 
   /**
@@ -162,5 +172,27 @@ export class App {
     const dismissedAt : number = Number(raw);
     const oneDayMs : number = 24 * 60 * 60 * 1000;
     return Number.isNaN(dismissedAt) || Date.now() - dismissedAt > oneDayMs;
+  }
+
+  /**
+   * Build metaadat mező normalizálása.
+   */
+  private normalizeBuildValue(value : string | undefined, fallback : string) : string {
+    if (typeof value !== 'string') {
+      return fallback;
+    }
+    const trimmed : string = value.trim();
+    return trimmed.length > 0 ? trimmed : fallback;
+  }
+
+  /**
+   * Build időbélyeg rövid, felhasználóbarát formázása.
+   */
+  private formatBuildTime(rawValue : string) : string {
+    const parsed : number = Date.parse(rawValue);
+    if (Number.isFinite(parsed) === false) {
+      return rawValue;
+    }
+    return new Date(parsed).toISOString().replace('T', ' ').replace('.000Z', ' UTC');
   }
 }

@@ -25,7 +25,7 @@ export class TokensPage implements OnInit {
     { action: 'Aktív highlight klip export', cost: '-3 token / klip' },
     { action: 'Videó lehallgatás (Whisper)', cost: '-5 token / megkezdett perc' },
     { action: '1 hónapnál régebbi videó napi tárolási díja', cost: '-1 token / videó / nap (16:00)' },
-    { action: 'Regisztrációs jóváírás', cost: '+100 token' },
+    { action: 'Regisztrációs jóváírás', cost: '+350 token' },
     { action: 'Havi jóváírás (hó elején, ha 300 alatt van)', cost: '+100 token' },
   ];
 

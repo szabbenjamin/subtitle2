@@ -5,11 +5,11 @@
       <p>A legfrissebb feltöltések legfelül jelennek meg.</p>
     </div>
     <div class="upload-box">
-      @if (isUploading === false) {
+      @if (canShowIngestControls() === true) {
         <input #picker type="file" accept="video/*,audio/*,.mp4,.mov,.mkv,.webm,.avi,.m4v,.mp3,.wav,.m4a,.aac,.flac,.ogg,.oga,.opus" hidden (change)="onFileSelected($event)" />
         <button type="button" class="picker-btn" (click)="openPicker()">{{ uploadButtonText() }}</button>
       }
-      @if (selectedFile !== undefined && isUploading === false) {
+      @if (selectedFile !== undefined && canShowIngestControls() === true) {
         <button
           type="button"
           class="accent upload-btn"
@@ -21,7 +21,7 @@
       @if (isUploading === true) {
         <button type="button" class="cancel-btn" (click)="cancelUpload()">Megszakítás</button>
       }
-      @if (isUploading === false) {
+      @if (canShowIngestControls() === true) {
         <input
           type="url"
           class="youtube-input"
@@ -56,7 +56,20 @@
 
   <section class="panel">
     <h2>Aktív videók</h2>
-    @if (isUploading === true) {
+    @for (task of activeIngestTasks; track task.id) {
+      <article class="row row-upload-placeholder">
+        <div class="row-main">
+          <div class="thumbnail-wrap thumbnail-wrap-placeholder" aria-hidden="true"></div>
+          <div class="meta">
+            <strong>{{ task.displayTitle.length > 0 ? task.displayTitle : 'Feldolgozás' }}</strong>
+            <span>Forrás: {{ task.sourceType === 'youtube' ? 'YouTube' : 'Fájl feltöltés' }}</span>
+            <span>Állapot: {{ task.stageMessage.length > 0 ? task.stageMessage : 'Feldolgozás folyamatban...' }}</span>
+            <span>Folyamat: {{ task.progressPercent }}%</span>
+          </div>
+        </div>
+      </article>
+    }
+    @if (isUploading === true && activeIngestTasks.length === 0) {
       <article class="row row-upload-placeholder">
         <div class="row-main">
           <div class="thumbnail-wrap thumbnail-wrap-placeholder" aria-hidden="true"></div>
@@ -71,7 +84,7 @@
     @if (isLoadingLists === true) {
       <p class="empty-state">Lista betöltése...</p>
     }
-    @if (isLoadingLists === false && visibleVideos.length === 0 && isUploading === false) {
+    @if (isLoadingLists === false && visibleVideos.length === 0 && activeIngestTasks.length === 0 && isUploading === false) {
       <p class="empty-state">Még nincs aktív videód.</p>
     }
     @for (video of visibleVideos; track video.id) {

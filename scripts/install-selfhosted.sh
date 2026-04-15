@@ -106,6 +106,8 @@ to_abs_path() {
 
 install_base_packages() {
   echo "[1/5] Rendszercsomagok telepítése..."
+  # Korabbi hibas Docker repo bejegyzesek torlese (pl. ubuntu repo Debianra).
+  run_root rm -f /etc/apt/sources.list.d/docker.list /etc/apt/sources.list.d/docker-ce.list
   run_root apt-get update -y
   run_root apt-get install -y ca-certificates curl gnupg lsb-release git rsync
 }
@@ -113,17 +115,45 @@ install_base_packages() {
 install_docker_engine() {
   echo "[2/5] Docker Engine + Compose plugin telepítése..."
 
+  local os_id codename repo_flavor repo_codename
+  os_id="$(. /etc/os-release && printf '%s' "${ID:-}")"
+  codename="$(. /etc/os-release && printf '%s' "${VERSION_CODENAME:-}")"
+  repo_codename="${DOCKER_REPO_CODENAME:-$codename}"
+
+  case "$os_id" in
+    ubuntu)
+      repo_flavor="ubuntu"
+      ;;
+    debian)
+      repo_flavor="debian"
+      if [[ "$repo_codename" == "trixie" || "$repo_codename" == "sid" || "$repo_codename" == "testing" ]]; then
+        repo_codename="${DOCKER_DEBIAN_CODENAME_FALLBACK:-bookworm}"
+        echo "Info: Debian '$codename' esetén Docker repo fallback codename: $repo_codename"
+      fi
+      ;;
+    *)
+      echo "HIBA: nem tamogatott disztribucio Docker telepiteshez: ID=$os_id"
+      echo "Támogatott: debian, ubuntu"
+      exit 1
+      ;;
+  esac
+
+  if [[ -z "$repo_codename" ]]; then
+    echo "HIBA: nem sikerult kiolvasni a disztribucio codename erteket."
+    echo "Add meg kezzel: export DOCKER_REPO_CODENAME=<codename>"
+    exit 1
+  fi
+
   run_root install -m 0755 -d /etc/apt/keyrings
   if [[ ! -f /etc/apt/keyrings/docker.gpg ]]; then
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | run_root gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    curl -fsSL "https://download.docker.com/linux/${repo_flavor}/gpg" | run_root gpg --dearmor -o /etc/apt/keyrings/docker.gpg
   fi
   run_root chmod a+r /etc/apt/keyrings/docker.gpg
 
-  local arch codename
+  local arch
   arch="$(dpkg --print-architecture)"
-  codename="$(. /etc/os-release && printf '%s' "$VERSION_CODENAME")"
 
-  echo "deb [arch=${arch} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu ${codename} stable" \
+  echo "deb [arch=${arch} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${repo_flavor} ${repo_codename} stable" \
     | run_root tee /etc/apt/sources.list.d/docker.list >/dev/null
 
   run_root apt-get update -y

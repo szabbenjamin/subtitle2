@@ -1,13 +1,14 @@
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectorRef, Component, ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { HostListener } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { forkJoin } from 'rxjs';
 import { VideoDetails, VideoListItem } from '../../models/api.models';
 import { AlertModalService } from '../../services/alert-modal.service';
 import { TokenService } from '../../services/token.service';
-import { ChunkUploadHandle, UploadCancelledError, VideoService } from '../../services/video.service';
+import { ChunkUploadHandle, UploadCancelledError, UploadDetachedError, VideoService } from '../../services/video.service';
 
 @Component({
   selector: 'app-list-page',
@@ -17,6 +18,7 @@ import { ChunkUploadHandle, UploadCancelledError, VideoService } from '../../ser
   styleUrl: './list.page.scss',
 })
 export class ListPage implements OnInit, OnDestroy {
+  private readonly youtubeImportStorageKey : string = 'subtitle2.activeYoutubeImport';
   @ViewChild('picker')
   public picker ?: ElementRef<HTMLInputElement>;
 
@@ -50,6 +52,7 @@ export class ListPage implements OnInit, OnDestroy {
     '.opus',
   ]);
   private uploadHandle ?: ChunkUploadHandle;
+  private isDestroyed : boolean = false;
 
   public constructor(
     private readonly videoService : VideoService,
@@ -64,8 +67,10 @@ export class ListPage implements OnInit, OnDestroy {
    * @returns Nem ad vissza értéket.
    */
   public ngOnInit() : void {
+    this.isDestroyed = false;
     this.tokenService.refreshBalance();
     this.reloadLists();
+    this.resumeYoutubeImportFromStorage();
   }
 
   /**
@@ -73,10 +78,28 @@ export class ListPage implements OnInit, OnDestroy {
    * @returns Nem ad vissza értéket.
    */
   public ngOnDestroy() : void {
+    this.isDestroyed = true;
     if (this.uploadHandle !== undefined) {
-      this.uploadHandle.cancel();
+      if (this.activeUploadKind === 'youtube' && typeof this.uploadHandle.detach === 'function') {
+        this.uploadHandle.detach();
+      } else {
+        this.uploadHandle.cancel();
+      }
       this.uploadHandle = undefined;
     }
+  }
+
+  /**
+   * Böngésző szintű figyelmeztetés tab bezárás/refresh/külső navigáció esetén.
+   */
+  @HostListener('window:beforeunload', ['$event'])
+  public handleBeforeUnload(event : BeforeUnloadEvent) : void {
+    if (this.hasBlockingFileUpload() === false) {
+      return;
+    }
+
+    event.preventDefault();
+    event.returnValue = '';
   }
 
   /**
@@ -136,17 +159,26 @@ export class ListPage implements OnInit, OnDestroy {
     this.uploadStatusText = 'Feltöltés indítása...';
 
     this.uploadHandle = this.videoService.startChunkedUpload(selectedFile, (percent : number, status : string) => {
+      if (this.isDestroyed === true) {
+        return;
+      }
       this.uploadProgress = percent;
       this.uploadStatusText = status;
       this.changeDetectorRef.detectChanges();
     });
     void this.uploadHandle.promise
       .then((video : VideoDetails) => {
+        if (this.isDestroyed === true) {
+          return;
+        }
         this.finishUpload('Kész');
         this.tokenService.refreshBalance();
         void this.router.navigate(['/video', video.id]);
       })
       .catch((error : unknown) => {
+        if (this.isDestroyed === true) {
+          return;
+        }
         if (error instanceof UploadCancelledError) {
           this.finishUpload('Feltöltés megszakítva');
         } else {
@@ -175,22 +207,39 @@ export class ListPage implements OnInit, OnDestroy {
     this.uploadStatusText = 'YouTube letöltés indítása...';
 
     this.uploadHandle = this.videoService.startYoutubeImport(trimmedUrl, (percent : number, status : string, displayTitle ?: string) => {
+      if (this.isDestroyed === true) {
+        return;
+      }
       this.uploadProgress = percent;
       this.uploadStatusText = status;
       if (typeof displayTitle === 'string' && displayTitle.trim().length > 0) {
         this.activeUploadDisplayTitle = displayTitle.trim();
+        this.saveActiveYoutubeImportToStorage(this.readActiveYoutubeImportIdFromStorage(), this.activeUploadDisplayTitle);
       }
       this.changeDetectorRef.detectChanges();
+    }, (importId : string, displayTitle : string) => {
+      this.saveActiveYoutubeImportToStorage(importId, displayTitle);
     });
 
     void this.uploadHandle.promise
       .then((video : VideoDetails) => {
+        if (this.isDestroyed === true) {
+          return;
+        }
+        this.clearActiveYoutubeImportStorage();
         this.finishUpload('YouTube import kész');
         this.youtubeUrl = '';
         this.tokenService.refreshBalance();
         void this.router.navigate(['/video', video.id]);
       })
       .catch((error : unknown) => {
+        if (error instanceof UploadDetachedError) {
+          return;
+        }
+        if (this.isDestroyed === true) {
+          return;
+        }
+        this.clearActiveYoutubeImportStorage();
         if (error instanceof UploadCancelledError) {
           this.finishUpload('YouTube letöltés megszakítva');
         } else {
@@ -211,6 +260,7 @@ export class ListPage implements OnInit, OnDestroy {
     if (handle === undefined) {
       return;
     }
+    const wasYoutubeImport : boolean = this.activeUploadKind === 'youtube';
 
     this.isUploading = false;
     this.uploadHandle = undefined;
@@ -219,6 +269,9 @@ export class ListPage implements OnInit, OnDestroy {
     this.activeUploadDisplayTitle = '';
     this.activeUploadKind = null;
     this.changeDetectorRef.detectChanges();
+    if (wasYoutubeImport === true) {
+      this.clearActiveYoutubeImportStorage();
+    }
     handle.cancel();
   }
 
@@ -244,6 +297,13 @@ export class ListPage implements OnInit, OnDestroy {
    */
   public canStartYoutubeImport() : boolean {
     return this.isUploading === false && this.youtubeUrl.trim().length > 0;
+  }
+
+  /**
+   * Van-e olyan aktív fájlfeltöltés, aminél oldalelhagyás megszakítja a folyamatot.
+   */
+  public hasBlockingFileUpload() : boolean {
+    return this.isUploading === true && this.activeUploadKind === 'file' && this.uploadHandle !== undefined;
   }
 
   /**
@@ -356,6 +416,144 @@ export class ListPage implements OnInit, OnDestroy {
     this.activeUploadDisplayTitle = '';
     this.activeUploadKind = null;
     this.changeDetectorRef.detectChanges();
+  }
+
+  /**
+   * Ha van mentett, még futó YouTube import, visszaállítja a helyi progress követést.
+   */
+  private resumeYoutubeImportFromStorage() : void {
+    if (this.isUploading === true) {
+      return;
+    }
+
+    const storedImportId : string = this.readActiveYoutubeImportIdFromStorage();
+    if (storedImportId.length === 0) {
+      return;
+    }
+
+    this.isUploading = true;
+    this.activeUploadKind = 'youtube';
+    this.activeUploadDisplayTitle = this.readActiveYoutubeImportTitleFromStorage();
+    this.uploadProgress = 0;
+    this.uploadStatusText = 'YouTube letöltés folytatása...';
+    this.errorMessage = '';
+
+    this.uploadHandle = this.videoService.resumeYoutubeImport(
+      storedImportId,
+      (percent : number, status : string, displayTitle ?: string) => {
+        if (this.isDestroyed === true) {
+          return;
+        }
+        this.uploadProgress = percent;
+        this.uploadStatusText = status;
+        if (typeof displayTitle === 'string' && displayTitle.trim().length > 0) {
+          this.activeUploadDisplayTitle = displayTitle.trim();
+          this.saveActiveYoutubeImportToStorage(storedImportId, this.activeUploadDisplayTitle);
+        }
+        this.changeDetectorRef.detectChanges();
+      },
+    );
+
+    void this.uploadHandle.promise
+      .then((video : VideoDetails) => {
+        if (this.isDestroyed === true) {
+          return;
+        }
+        this.clearActiveYoutubeImportStorage();
+        this.finishUpload('YouTube import kész');
+        this.youtubeUrl = '';
+        this.tokenService.refreshBalance();
+        void this.router.navigate(['/video', video.id]);
+      })
+      .catch((error : unknown) => {
+        if (error instanceof UploadDetachedError) {
+          return;
+        }
+        if (this.isDestroyed === true) {
+          return;
+        }
+        this.clearActiveYoutubeImportStorage();
+        if (error instanceof UploadCancelledError) {
+          this.finishUpload('YouTube letöltés megszakítva');
+        } else {
+          this.finishUpload('YouTube letöltési hiba');
+          this.errorMessage = this.extractErrorMessage(error);
+          this.alertModalService.open(this.errorMessage, 'Hiba');
+          this.changeDetectorRef.detectChanges();
+        }
+      });
+  }
+
+  /**
+   * Aktív YouTube import állapot mentése kliens oldalon (navigáció túléléséhez).
+   */
+  private saveActiveYoutubeImportToStorage(importId : string, displayTitle : string) : void {
+    const trimmedImportId : string = importId.trim();
+    if (trimmedImportId.length === 0) {
+      return;
+    }
+    try {
+      localStorage.setItem(
+        this.youtubeImportStorageKey,
+        JSON.stringify({
+          importId: trimmedImportId,
+          displayTitle: displayTitle.trim(),
+        }),
+      );
+    } catch {
+      // Szándékosan csendes fallback.
+    }
+  }
+
+  /**
+   * Aktív YouTube import tárolt azonosítójának kiolvasása.
+   */
+  private readActiveYoutubeImportIdFromStorage() : string {
+    try {
+      const raw : string | null = localStorage.getItem(this.youtubeImportStorageKey);
+      if (raw === null || raw.trim().length === 0) {
+        return '';
+      }
+      const parsed : unknown = JSON.parse(raw) as unknown;
+      if (typeof parsed !== 'object' || parsed === null) {
+        return '';
+      }
+      const importId : unknown = (parsed as { importId ?: unknown }).importId;
+      return typeof importId === 'string' ? importId.trim() : '';
+    } catch {
+      return '';
+    }
+  }
+
+  /**
+   * Aktív YouTube import tárolt címének kiolvasása.
+   */
+  private readActiveYoutubeImportTitleFromStorage() : string {
+    try {
+      const raw : string | null = localStorage.getItem(this.youtubeImportStorageKey);
+      if (raw === null || raw.trim().length === 0) {
+        return '';
+      }
+      const parsed : unknown = JSON.parse(raw) as unknown;
+      if (typeof parsed !== 'object' || parsed === null) {
+        return '';
+      }
+      const title : unknown = (parsed as { displayTitle ?: unknown }).displayTitle;
+      return typeof title === 'string' ? title.trim() : '';
+    } catch {
+      return '';
+    }
+  }
+
+  /**
+   * Aktív YouTube import állapot törlése kliens tárolóból.
+   */
+  private clearActiveYoutubeImportStorage() : void {
+    try {
+      localStorage.removeItem(this.youtubeImportStorageKey);
+    } catch {
+      // Szándékosan csendes fallback.
+    }
   }
 
   /**

@@ -1,6 +1,7 @@
 import { Routes } from '@angular/router';
 import { adminEmailGuard } from './guards/admin-email.guard';
 import { authGuard } from './guards/auth.guard';
+import { listUploadLeaveGuard } from './guards/list-upload-leave.guard';
 import { AdminTokensPage } from './pages/admin-tokens/admin-tokens.page';
 import { ListPage } from './pages/list/list.page';
 import { LoginPage } from './pages/login/login.page';
@@ -29,6 +30,7 @@ export const routes : Routes = [
     path: 'lista',
     component: ListPage,
     canActivate: [authGuard],
+    canDeactivate: [listUploadLeaveGuard],
   },
   {
     path: 'video/:id',

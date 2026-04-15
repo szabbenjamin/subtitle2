@@ -32,52 +32,61 @@
           </div>
         }
       </div>
-      <section class="whisper-config">
-        <h4>Whisper beállítások</h4>
-        <label>
-          Modell
-          <div class="model-fixed">{{ whisperModel }}</div>
-        </label>
-
-        <label>
-          Nyelv
-          <select [(ngModel)]="whisperLanguage" (ngModelChange)="onWhisperSettingsChange()">
-            @for (lang of languageOptions; track lang.value) {
-              <option [value]="lang.value">{{ lang.label }}</option>
-            }
-          </select>
-        </label>
-
-        <label>
-          Szó / sor
-          <input type="number" min="1" max="30" step="1" [(ngModel)]="wordsPerLine" (ngModelChange)="onWhisperSettingsChange()" />
-        </label>
-        @if (whisperSaveState.length > 0) {
-          <p class="status">{{ whisperSaveState }}</p>
-        }
-      </section>
-
-      <button type="button" (click)="requestListen()">Lehallgatom</button>
-      @if (listenRequestState.length > 0) {
-        <p class="status">{{ listenRequestState }}</p>
-      }
-      @if (canOpenHighlights() === true) {
-        <a class="highlight-link" [routerLink]="['/video', video.id, 'highlights']">Legjobb pillanatok keresése</a>
-      }
-      <div class="processing-state">
-        <p>Állapot: {{ video.processingStatus }}</p>
-        @if (video.processingStatus === 'queued') {
-          <div class="loader-row queued">
-            <span class="loader-dot" aria-hidden="true"></span>
-            <span>Várólistán, feldolgozásra vár...</span>
-          </div>
-        } @else if (video.processingStatus === 'pending') {
+      @if (isInitialMediaProcessing() === true) {
+        <div class="processing-state">
           <div class="loader-row">
             <span class="loader-dot" aria-hidden="true"></span>
             <span>Feldolgozás folyamatban...</span>
           </div>
+        </div>
+      } @else {
+        <section class="whisper-config">
+          <h4>Whisper beállítások</h4>
+          <label>
+            Modell
+            <div class="model-fixed">{{ whisperModel }}</div>
+          </label>
+
+          <label>
+            Nyelv
+            <select [(ngModel)]="whisperLanguage" (ngModelChange)="onWhisperSettingsChange()">
+              @for (lang of languageOptions; track lang.value) {
+                <option [value]="lang.value">{{ lang.label }}</option>
+              }
+            </select>
+          </label>
+
+          <label>
+            Szó / sor
+            <input type="number" min="1" max="30" step="1" [(ngModel)]="wordsPerLine" (ngModelChange)="onWhisperSettingsChange()" />
+          </label>
+          @if (whisperSaveState.length > 0) {
+            <p class="status">{{ whisperSaveState }}</p>
+          }
+        </section>
+
+        <button type="button" (click)="requestListen()">Lehallgatom</button>
+        @if (listenRequestState.length > 0) {
+          <p class="status">{{ listenRequestState }}</p>
         }
-      </div>
+        @if (canOpenHighlights() === true) {
+          <a class="highlight-link" [routerLink]="['/video', video.id, 'highlights']">Legjobb pillanatok keresése</a>
+        }
+        <div class="processing-state">
+          <p>Állapot: {{ video.processingStatus }}</p>
+          @if (video.processingStatus === 'queued') {
+            <div class="loader-row queued">
+              <span class="loader-dot" aria-hidden="true"></span>
+              <span>Várólistán, feldolgozásra vár...</span>
+            </div>
+          } @else if (video.processingStatus === 'pending') {
+            <div class="loader-row">
+              <span class="loader-dot" aria-hidden="true"></span>
+              <span>Feldolgozás folyamatban...</span>
+            </div>
+          }
+        </div>
+      }
     </aside>
 
     <main class="center">

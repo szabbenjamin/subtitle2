@@ -1014,4 +1014,21 @@ export class VideoPage implements OnInit, OnDestroy {
   public canOpenHighlights() : boolean {
     return this.video !== undefined && this.video.durationSeconds >= 240;
   }
+
+  /**
+   * Kezdeti feltöltés utáni háttér médiafeldolgozás detektálása.
+   * Ilyenkor még nincs duration/thumbnail/subtitle, csak pending státusz.
+   */
+  public isInitialMediaProcessing() : boolean {
+    if (this.video === undefined) {
+      return false;
+    }
+
+    return (
+      this.video.processingStatus === 'pending' &&
+      this.video.listenRequested === false &&
+      this.video.durationSeconds === 0 &&
+      this.video.subtitleText.trim().length === 0
+    );
+  }
 }

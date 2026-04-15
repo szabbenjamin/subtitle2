@@ -4,6 +4,10 @@ Teljes stack projekt két mappában:
 - `frontend`: Angular 21 PWA
 - `backend`: NestJS 11 + MySQL
 
+## Részletes dokumentáció
+
+- [docs/projekt-kezikonyv.md](docs/projekt-kezikonyv.md) – teljes működésleírás (képernyő-flow, backend pipeline, tokenek, Docker, CI/CD, hibaelhárítás)
+
 ## Fejlesztői indítás
 
 Használj két terminált: egyet backendhez, egyet frontendhez.

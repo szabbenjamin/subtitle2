@@ -65,8 +65,16 @@ export class UploadCancelledError extends Error {
   }
 }
 
+export class UploadDetachedError extends Error {
+  public constructor(message : string = 'A kliens oldali követés leállt.') {
+    super(message);
+    this.name = 'UploadDetachedError';
+  }
+}
+
 export interface ChunkUploadHandle {
   cancel : () => void;
+  detach ?: () => void;
   promise : Promise<VideoDetails>;
 }
 
@@ -201,18 +209,26 @@ export class VideoService {
   public startYoutubeImport(
     url : string,
     onProgress : (percent : number, status : string, displayTitle ?: string) => void,
+    onStarted ?: (importId : string, displayTitle : string) => void,
   ) : ChunkUploadHandle {
     const cancelState : { value : boolean } = { value: false };
+    const cancelRemoteState : { value : boolean } = { value: false };
     let importId : string | null = null;
     let didCancelRequest : boolean = false;
 
     const cancel = () : void => {
       cancelState.value = true;
+      cancelRemoteState.value = true;
       if (importId === null || didCancelRequest === true) {
         return;
       }
       didCancelRequest = true;
       void this.cancelYoutubeImport(importId);
+    };
+
+    const detach = () : void => {
+      cancelState.value = true;
+      cancelRemoteState.value = false;
     };
 
     const promise : Promise<VideoDetails> = (async () : Promise<VideoDetails> => {
@@ -222,6 +238,9 @@ export class VideoService {
         }),
       );
       importId = started.importId;
+      if (onStarted !== undefined) {
+        onStarted(started.importId, started.displayTitle);
+      }
       onProgress(
         Math.max(0, Math.min(99, Math.round(started.progressPercent))),
         started.stageMessage,
@@ -230,6 +249,9 @@ export class VideoService {
 
       while (true) {
         if (cancelState.value === true) {
+          if (cancelRemoteState.value === false) {
+            throw new UploadDetachedError();
+          }
           throw new UploadCancelledError('A YouTube letöltés megszakításra került.');
         }
 
@@ -261,14 +283,92 @@ export class VideoService {
         }
       }
     })().catch(async (error : unknown) : Promise<never> => {
-      if (cancelState.value === true && importId !== null && didCancelRequest === false) {
+      if (cancelState.value === true && cancelRemoteState.value === true && importId !== null && didCancelRequest === false) {
         didCancelRequest = true;
         await this.cancelYoutubeImport(importId);
       }
       throw error;
     });
 
-    return { cancel, promise };
+    return { cancel, detach, promise };
+  }
+
+  /**
+   * Már futó YouTube import kliens oldali követésének újracsatlakoztatása.
+   * @param importId Aktív import azonosító.
+   * @param onProgress Progress callback (százalék, státusz, cím).
+   * @returns Megszakítható/leválasztható handle.
+   */
+  public resumeYoutubeImport(
+    importId : string,
+    onProgress : (percent : number, status : string, displayTitle ?: string) => void,
+  ) : ChunkUploadHandle {
+    const trimmedImportId : string = importId.trim();
+    const cancelState : { value : boolean } = { value: false };
+    const cancelRemoteState : { value : boolean } = { value: false };
+    let didCancelRequest : boolean = false;
+
+    const cancel = () : void => {
+      cancelState.value = true;
+      cancelRemoteState.value = true;
+      if (didCancelRequest === true) {
+        return;
+      }
+      didCancelRequest = true;
+      void this.cancelYoutubeImport(trimmedImportId);
+    };
+
+    const detach = () : void => {
+      cancelState.value = true;
+      cancelRemoteState.value = false;
+    };
+
+    const promise : Promise<VideoDetails> = (async () : Promise<VideoDetails> => {
+      while (true) {
+        if (cancelState.value === true) {
+          if (cancelRemoteState.value === false) {
+            throw new UploadDetachedError();
+          }
+          throw new UploadCancelledError('A YouTube letöltés megszakításra került.');
+        }
+
+        const status : YoutubeImportStatusResponse = await firstValueFrom(
+          this.httpClient.get<YoutubeImportStatusResponse>(`/api/videos/upload/youtube/${trimmedImportId}`),
+        );
+
+        const safePercent : number = Math.max(0, Math.min(99, Math.round(status.progressPercent)));
+        onProgress(safePercent, status.stageMessage, status.displayTitle);
+
+        if (status.status === 'completed' && status.videoId !== null) {
+          onProgress(99, 'Feldolgozás lezárása...', status.displayTitle);
+          const video : VideoDetails = await firstValueFrom(this.getById(status.videoId));
+          onProgress(100, 'Letöltés kész', status.displayTitle);
+          return video;
+        }
+
+        if (status.status === 'failed') {
+          throw new Error(
+            status.errorMessage.length > 0
+              ? status.errorMessage
+              : 'A YouTube letöltés hibával leállt.',
+          );
+        }
+
+        if (status.status === 'cancelled') {
+          throw new UploadCancelledError('A YouTube letöltés megszakításra került.');
+        }
+
+        await this.wait(1200);
+      }
+    })().catch(async (error : unknown) : Promise<never> => {
+      if (cancelState.value === true && cancelRemoteState.value === true && didCancelRequest === false) {
+        didCancelRequest = true;
+        await this.cancelYoutubeImport(trimmedImportId);
+      }
+      throw error;
+    });
+
+    return { cancel, detach, promise };
   }
 
   /**

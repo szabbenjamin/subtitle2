@@ -1,4 +1,4 @@
-import { HttpClient, HttpEvent, HttpEventType, HttpResponse } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpEvent, HttpEventType, HttpResponse } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { catchError, firstValueFrom, Observable, of, Subscription, tap } from 'rxjs';
 import {
@@ -82,6 +82,9 @@ export interface ChunkUploadHandle {
 @Injectable({ providedIn: 'root' })
 export class VideoService {
   private readonly chunkSizeBytes : number = 10 * 1024 * 1024;
+  private readonly youtubeImportPollIntervalMs : number = 1200;
+  private readonly youtubeImportTransientRetryDelayMs : number = 1500;
+  private readonly youtubeImportMaxTransientRetries : number = 10;
 
   public constructor(private readonly httpClient : HttpClient) {}
 
@@ -264,9 +267,11 @@ export class VideoService {
           throw new UploadCancelledError('A YouTube letöltés megszakításra került.');
         }
 
-        await this.wait(1200);
-        const status : YoutubeImportStatusResponse = await firstValueFrom(
-          this.httpClient.get<YoutubeImportStatusResponse>(`/api/videos/upload/youtube/${started.importId}`),
+        await this.wait(this.youtubeImportPollIntervalMs);
+        const status : YoutubeImportStatusResponse = await this.pollYoutubeImportStatus(
+          started.importId,
+          cancelState,
+          cancelRemoteState,
         );
 
         const safePercent : number = Math.max(0, Math.min(99, Math.round(status.progressPercent)));
@@ -341,8 +346,10 @@ export class VideoService {
           throw new UploadCancelledError('A YouTube letöltés megszakításra került.');
         }
 
-        const status : YoutubeImportStatusResponse = await firstValueFrom(
-          this.httpClient.get<YoutubeImportStatusResponse>(`/api/videos/upload/youtube/${trimmedImportId}`),
+        const status : YoutubeImportStatusResponse = await this.pollYoutubeImportStatus(
+          trimmedImportId,
+          cancelState,
+          cancelRemoteState,
         );
 
         const safePercent : number = Math.max(0, Math.min(99, Math.round(status.progressPercent)));
@@ -367,7 +374,7 @@ export class VideoService {
           throw new UploadCancelledError('A YouTube letöltés megszakításra került.');
         }
 
-        await this.wait(1200);
+        await this.wait(this.youtubeImportPollIntervalMs);
       }
     })().catch(async (error : unknown) : Promise<never> => {
       if (cancelState.value === true && cancelRemoteState.value === true && didCancelRequest === false) {
@@ -574,6 +581,81 @@ export class VideoService {
     formData.append('chunkIndex', String(chunkIndex));
     formData.append('totalChunks', String(context.initResponse.totalChunks));
     return formData;
+  }
+
+  /**
+   * YouTube import státusz lekérése átmeneti gateway/network hibákra retry-val.
+   * @param importId Import azonosító.
+   * @param cancelState Lokális megszakítás állapot.
+   * @param cancelRemoteState Backend megszakítás kérés állapot.
+   * @returns Státusz payload.
+   */
+  private async pollYoutubeImportStatus(
+    importId : string,
+    cancelState : { value : boolean },
+    cancelRemoteState : { value : boolean },
+  ) : Promise<YoutubeImportStatusResponse> {
+    let transientErrorCount : number = 0;
+    while (true) {
+      if (cancelState.value === true) {
+        if (cancelRemoteState.value === false) {
+          throw new UploadDetachedError();
+        }
+        throw new UploadCancelledError('A YouTube letöltés megszakításra került.');
+      }
+
+      try {
+        return await firstValueFrom(this.httpClient.get<YoutubeImportStatusResponse>(`/api/videos/upload/youtube/${importId}`));
+      } catch (error : unknown) {
+        if (this.isTransientYoutubePollingError(error) === false) {
+          throw this.toYoutubePollingError(error);
+        }
+
+        transientErrorCount += 1;
+        if (transientErrorCount > this.youtubeImportMaxTransientRetries) {
+          throw this.toYoutubePollingError(error);
+        }
+        await this.wait(this.youtubeImportTransientRetryDelayMs);
+      }
+    }
+  }
+
+  /**
+   * Eldönti, hogy a YouTube státusz polling hiba átmeneti és újrapróbálható-e.
+   * @param error Hiba objektum.
+   * @returns Retry-olható hiba esetén true.
+   */
+  private isTransientYoutubePollingError(error : unknown) : boolean {
+    if (error instanceof HttpErrorResponse === false) {
+      return false;
+    }
+    return error.status === 0 || error.status === 502 || error.status === 503 || error.status === 504;
+  }
+
+  /**
+   * Polling hibából felhasználóbarát, rövid üzenet készítése.
+   * @param error Nyers hiba.
+   * @returns Megjeleníthető Error.
+   */
+  private toYoutubePollingError(error : unknown) : Error {
+    if (error instanceof HttpErrorResponse) {
+      if (error.status === 404) {
+        return new Error('A YouTube import folyamat már nem található a szerveren. Kérlek, indítsd újra a letöltést.');
+      }
+
+      if (this.isTransientYoutubePollingError(error) === true) {
+        const statusText : string = error.status > 0 ? `HTTP ${error.status}` : 'hálózati hiba';
+        return new Error(
+          `Átmeneti szerverkapcsolati hiba (${statusText}) a YouTube letöltés közben. A háttérfolyamat valószínűleg még fut; próbáld újra pár másodperc múlva.`,
+        );
+      }
+    }
+
+    if (error instanceof Error && error.message.trim().length > 0) {
+      return error;
+    }
+
+    return new Error('A YouTube import állapot lekérése sikertelen.');
   }
 
   /**

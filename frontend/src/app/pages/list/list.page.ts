@@ -621,12 +621,19 @@ export class ListPage implements OnInit, OnDestroy {
       if (typeof payload === 'object' && payload !== null) {
         const message : unknown = (payload as { message ?: unknown }).message;
         if (typeof message === 'string' && message.length > 0) {
+          if (this.isLikelyHtmlErrorPage(message) === true) {
+            return this.toHttpErrorMessage(error.status);
+          }
           return message;
         }
       }
       if (typeof payload === 'string' && payload.length > 0) {
+        if (this.isLikelyHtmlErrorPage(payload) === true) {
+          return this.toHttpErrorMessage(error.status);
+        }
         return payload;
       }
+      return this.toHttpErrorMessage(error.status);
     }
 
     if (error instanceof Error && error.message.trim().length > 0) {
@@ -634,6 +641,37 @@ export class ListPage implements OnInit, OnDestroy {
     }
 
     return 'A művelet nem hajtható végre. Kérlek, vedd fel a kapcsolatot a szoftver üzemeltetőjével.';
+  }
+
+  /**
+   * Egyszerű HTML hibalap detektálás nyers payload esetén.
+   */
+  private isLikelyHtmlErrorPage(payload : string) : boolean {
+    const normalized : string = payload.trim().toLowerCase();
+    return (
+      normalized.startsWith('<!doctype html') ||
+      normalized.startsWith('<html') ||
+      (normalized.includes('<body') && normalized.includes('</html>'))
+    );
+  }
+
+  /**
+   * HTTP státuszkód alapú, rövid felhasználóbarát hibaüzenet.
+   */
+  private toHttpErrorMessage(status : number) : string {
+    if (status === 0) {
+      return 'A szerver jelenleg nem érhető el. Kérlek, próbáld újra.';
+    }
+    if (status === 502 || status === 503 || status === 504) {
+      return `Átmeneti szerverkapcsolati hiba (HTTP ${status}). A háttérfolyamat még futhat, kérlek próbáld újra pár másodperc múlva.`;
+    }
+    if (status >= 500) {
+      return `Szerverhiba történt (HTTP ${status}). Kérlek, próbáld újra később.`;
+    }
+    if (status > 0) {
+      return `A kérés sikertelen (HTTP ${status}).`;
+    }
+    return 'A művelet nem hajtható végre. Kérlek, próbáld újra később.';
   }
 
   /**

@@ -64,6 +64,8 @@ interface UploadSession {
 interface ProbedMediaStream {
   codecName : string | null;
   bitRate : number | null;
+  width : number | null;
+  height : number | null;
 }
 
 interface ProbedMediaFile {
@@ -145,6 +147,8 @@ export class VideosService {
   private readonly uploadTranscodePreset : string = 'superfast';
   private readonly uploadVideoBitRateMultiplier : number = 1.3;
   private readonly uploadAudioBitRateMultiplier : number = 1.15;
+  private readonly maxNormalizedVideoWidth : number = 1920;
+  private readonly maxNormalizedVideoHeight : number = 1080;
   private readonly chunkSizeBytes : number = 10 * 1024 * 1024;
   private readonly activeIngestTaskStatuses : VideoIngestStatus[] = ['queued', 'uploading', 'downloading', 'processing'];
   private readonly uploadSessions : Map<string, UploadSession> = new Map<string, UploadSession>();
@@ -830,6 +834,8 @@ export class VideosService {
       '--no-playlist',
       '--newline',
       '--restrict-filenames',
+      '-f',
+      'bestvideo*[height<=1080]+bestaudio/best[height<=1080]/best',
       '--merge-output-format',
       'mp4',
       '-o',
@@ -1417,7 +1423,7 @@ export class VideosService {
       this.logger.log(
         `Konvertálás kihagyva (már kompatibilis). file="${storageFileName}", codec="${probed?.videoStream?.codecName ?? 'unknown'}", audio="${
           probed?.audioStream?.codecName ?? 'none'
-        }"`,
+        }", resolution=${this.describeVideoResolution(probed?.videoStream ?? null)}`,
       );
       return {
         storageFileName,
@@ -1428,7 +1434,7 @@ export class VideosService {
     this.logger.log(
       `Konvertálás szükséges. input="${storageFileName}", format="${probed?.formatNames.join(',') ?? 'unknown'}", videoCodec="${
         probed?.videoStream?.codecName ?? 'unknown'
-      }", audioCodec="${probed?.audioStream?.codecName ?? 'unknown'}"`,
+      }", audioCodec="${probed?.audioStream?.codecName ?? 'unknown'}", resolution=${this.describeVideoResolution(probed?.videoStream ?? null)}`,
     );
 
     let convertedStorageFileName : string = this.generateStorageFileName('.mp4');
@@ -1443,6 +1449,7 @@ export class VideosService {
         outputPath,
         videoBitRate: probed?.videoStream?.bitRate ?? probed?.formatBitRate ?? null,
         audioBitRate: probed?.audioStream?.bitRate ?? null,
+        enforceMaxResolution: probed?.videoStream !== null,
       });
     } catch (error : unknown) {
       await rm(outputPath, { force: true });
@@ -1748,8 +1755,9 @@ export class VideosService {
       probed.audioStream === null ||
       probed.audioStream.codecName === null ||
       probed.audioStream.codecName === 'aac';
+    const exceedsMaxResolution : boolean = this.isVideoResolutionAboveLimit(probed.videoStream);
 
-    return !(isMp4Container && isH264Video && isAacAudio);
+    return !(isMp4Container && isH264Video && isAacAudio && exceedsMaxResolution === false);
   }
 
   /**
@@ -1829,6 +1837,7 @@ export class VideosService {
     outputPath : string;
     videoBitRate : number | null;
     audioBitRate : number | null;
+    enforceMaxResolution : boolean;
   }) : Promise<void> {
     const targetVideoBitRate : number | null = this.scaleBitRate(params.videoBitRate, this.uploadVideoBitRateMultiplier);
     const targetAudioBitRate : number | null = this.scaleBitRate(params.audioBitRate, this.uploadAudioBitRateMultiplier);
@@ -1838,8 +1847,11 @@ export class VideosService {
         params.videoBitRate ?? 'auto'
       } -> ${targetVideoBitRate ?? 'auto'}, audioBitrate=${params.audioBitRate ?? 'auto'} -> ${targetAudioBitRate ?? 'auto'}, preset=${
         this.uploadTranscodePreset
-      }`,
+      }, enforceMaxResolution=${params.enforceMaxResolution}`,
     );
+    const maxResolutionFilter : string =
+      `scale=${this.maxNormalizedVideoWidth}:${this.maxNormalizedVideoHeight}:force_original_aspect_ratio=decrease,` +
+      'scale=trunc(iw/2)*2:trunc(ih/2)*2';
     const ffmpegArgs : string[] = [
       '-y',
       '-i',
@@ -1857,6 +1869,10 @@ export class VideosService {
       '-movflags',
       '+faststart',
     ];
+
+    if (params.enforceMaxResolution === true) {
+      ffmpegArgs.push('-vf', maxResolutionFilter);
+    }
 
     if (targetVideoBitRate !== null) {
       ffmpegArgs.push('-b:v', this.toBitRateArgument(targetVideoBitRate, 100));
@@ -1884,6 +1900,104 @@ export class VideosService {
         },
       );
     });
+  }
+
+  /**
+   * Eldönti, hogy a videó stream felbontása meghaladja-e a támogatott maximumot.
+   * @param stream Videó stream meta.
+   * @returns Igaz, ha túl nagy.
+   */
+  private isVideoResolutionAboveLimit(stream : ProbedMediaStream | null) : boolean {
+    if (stream === null) {
+      return false;
+    }
+    if (stream.width === null || stream.height === null) {
+      return false;
+    }
+    return stream.width > this.maxNormalizedVideoWidth || stream.height > this.maxNormalizedVideoHeight;
+  }
+
+  /**
+   * Rövid, logbarát felbontás leírás.
+   * @param stream Videó stream meta.
+   * @returns `WxH` vagy fallback szöveg.
+   */
+  private describeVideoResolution(stream : ProbedMediaStream | null) : string {
+    if (stream === null) {
+      return 'none';
+    }
+    if (stream.width === null || stream.height === null) {
+      return 'unknown';
+    }
+    return `${stream.width}x${stream.height}`;
+  }
+
+  /**
+   * Egész szám dimenzió (width/height) normalizálása.
+   * @param rawValue Nyers érték.
+   * @returns Pozitív egész dimenzió vagy null.
+   */
+  private parseDimension(rawValue : unknown) : number | null {
+    const parsed : number = Number(rawValue);
+    if (Number.isFinite(parsed) === false) {
+      return null;
+    }
+    const rounded : number = Math.round(parsed);
+    if (rounded <= 0) {
+      return null;
+    }
+    return rounded;
+  }
+
+  /**
+   * Stream objektumból codec + bitráta + felbontás kiolvasása.
+   * @param stream Nyers stream objektum.
+   * @returns Egységes stream információ vagy null.
+   */
+  private toProbedStream(stream ?: Record<string, unknown>) : ProbedMediaStream | null {
+    if (stream === undefined) {
+      return null;
+    }
+    const codecName : string | null = this.parseCodecName(stream['codec_name']);
+    const bitRate : number | null = this.parseBitRate(stream['bit_rate']);
+    const width : number | null = this.parseDimension(stream['width']);
+    const height : number | null = this.parseDimension(stream['height']);
+    return {
+      codecName,
+      bitRate,
+      width,
+      height,
+    };
+  }
+
+  /**
+   * Nyers codec név normalizálása.
+   * @param rawCodecName Nyers codec név.
+   * @returns Codec név vagy null.
+   */
+  private parseCodecName(rawCodecName : unknown) : string | null {
+    if (typeof rawCodecName !== 'string') {
+      return null;
+    }
+    const normalized : string = rawCodecName.trim().toLowerCase();
+    return normalized.length > 0 ? normalized : null;
+  }
+
+  /**
+   * Nyers bitráta mező számmá alakítása.
+   * @param rawBitRate Nyers bitráta.
+   * @returns Bit/s vagy null.
+   */
+  private parseBitRate(rawBitRate : unknown) : number | null {
+    const parsed : number = Number(rawBitRate);
+    if (Number.isFinite(parsed) === false) {
+      return null;
+    }
+    const rounded : number = Math.round(parsed);
+    if (rounded <= 0) {
+      return null;
+    }
+    return rounded;
   }
 
   /**
@@ -1964,53 +2078,6 @@ export class VideosService {
       return null;
     }
     return normalized;
-  }
-
-  /**
-   * Stream objektumból codec + bitráta kiolvasása.
-   * @param stream Nyers stream objektum.
-   * @returns Egységes stream információ vagy null.
-   */
-  private toProbedStream(stream ?: Record<string, unknown>) : ProbedMediaStream | null {
-    if (stream === undefined) {
-      return null;
-    }
-    const codecName : string | null = this.parseCodecName(stream['codec_name']);
-    const bitRate : number | null = this.parseBitRate(stream['bit_rate']);
-    return {
-      codecName,
-      bitRate,
-    };
-  }
-
-  /**
-   * Nyers codec név normalizálása.
-   * @param rawCodecName Nyers codec név.
-   * @returns Codec név vagy null.
-   */
-  private parseCodecName(rawCodecName : unknown) : string | null {
-    if (typeof rawCodecName !== 'string') {
-      return null;
-    }
-    const normalized : string = rawCodecName.trim().toLowerCase();
-    return normalized.length > 0 ? normalized : null;
-  }
-
-  /**
-   * Nyers bitráta mező számmá alakítása.
-   * @param rawBitRate Nyers bitráta.
-   * @returns Bit/s vagy null.
-   */
-  private parseBitRate(rawBitRate : unknown) : number | null {
-    const parsed : number = Number(rawBitRate);
-    if (Number.isFinite(parsed) === false) {
-      return null;
-    }
-    const rounded : number = Math.round(parsed);
-    if (rounded <= 0) {
-      return null;
-    }
-    return rounded;
   }
 
   /**
